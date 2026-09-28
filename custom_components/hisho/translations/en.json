@@ -1,0 +1,66 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Hisho control plane",
+        "description": "Enter the address of your Hisho control plane. It must be reachable from Home Assistant on the local network (Tailscale addresses work too).",
+        "data": {
+          "host": "Host or IP address",
+          "port": "API port",
+          "token": "API token (optional)",
+          "scan_interval": "Poll interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach a Hisho control plane at that address. Check the host/port and that the Hisho API is running.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This Hisho control plane is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Hisho options",
+        "data": {
+          "scan_interval": "Poll interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "fleet_health": {
+        "name": "Fleet health"
+      },
+      "machines_reachable": {
+        "name": "Machines reachable"
+      },
+      "machines_total": {
+        "name": "Machines total"
+      },
+      "services_active": {
+        "name": "Services active"
+      },
+      "compute_state": {
+        "name": "Compute workers"
+      },
+      "last_sweep": {
+        "name": "Last fleet sweep"
+      },
+      "version": {
+        "name": "Version"
+      }
+    },
+    "binary_sensor": {
+      "fleet_ok": {
+        "name": "Fleet OK"
+      },
+      "services_ok": {
+        "name": "Services OK"
+      }
+    }
+  }
+}
