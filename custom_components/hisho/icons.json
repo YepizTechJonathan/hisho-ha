@@ -1,0 +1,37 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "online": { "default": "mdi:server-network", "state": { "off": "mdi:server-network-off" } },
+      "sync_connected": { "default": "mdi:sync", "state": { "off": "mdi:sync-off" } },
+      "safe_to_shut_down": { "default": "mdi:power", "state": { "off": "mdi:power-off" } },
+      "sync_problem": { "default": "mdi:sync-alert" },
+      "sync_peer": { "default": "mdi:cellphone-link", "state": { "off": "mdi:cellphone-link-off" } },
+      "service": { "default": "mdi:cog" }
+    },
+    "sensor": {
+      "machines_online": { "default": "mdi:server" },
+      "machines_faulted": { "default": "mdi:server-remove" },
+      "sync_conflicts": { "default": "mdi:file-document-alert" },
+      "machine_state": {
+        "default": "mdi:server",
+        "state": {
+          "asleep": "mdi:sleep",
+          "away": "mdi:airplane",
+          "maintenance": "mdi:wrench",
+          "unreachable": "mdi:lan-disconnect",
+          "faulted": "mdi:alert-circle"
+        }
+      },
+      "memory_usage": { "default": "mdi:memory" },
+      "disk_usage": { "default": "mdi:harddisk" },
+      "gpu_usage": { "default": "mdi:expansion-card" },
+      "jobs_running": { "default": "mdi:play-box-multiple" },
+      "jobs_queued": { "default": "mdi:tray-full" },
+      "last_boot": { "default": "mdi:restart" },
+      "containers_running": { "default": "mdi:docker" },
+      "heartbeat_age": { "default": "mdi:heart-pulse" },
+      "sync_folder": { "default": "mdi:folder-sync" },
+      "compute_worker": { "default": "mdi:chip" }
+    }
+  }
+}

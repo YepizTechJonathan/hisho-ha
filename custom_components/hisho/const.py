@@ -1,23 +1,22 @@
 """Constants for the Hisho integration."""
 
-DOMAIN = "hisho"
+from __future__ import annotations
 
-CONF_HOST = "host"
-CONF_PORT = "port"
-CONF_TOKEN = "token"
-CONF_SCAN_INTERVAL = "scan_interval"
+from datetime import timedelta
+from typing import Final
 
-DEFAULT_PORT = 8787
-DEFAULT_SCAN_INTERVAL = 30
+DOMAIN: Final = "hisho"
+MANUFACTURER: Final = "Hisho"
 
-ENDPOINT_FLEET_HEALTH = "/api/fleet-health"
-ENDPOINT_STATUS = "/api/status"
-ENDPOINT_HOME_ASSISTANT = "/api/home-assistant"
-ENDPOINT_COMPUTE = "/api/compute"
-ENDPOINT_IPMI = "/api/ipmi"
+SNAPSHOT_PATH: Final = "/api/ha/snapshot"
+# Highest snapshot schema this version understands. Hisho bumps it when a field
+# changes meaning; a newer one is refused rather than misread.
+SUPPORTED_SCHEMA: Final = 1
 
-MANUFACTURER = "Yepiz Tech LLC"
-MODEL = "Hisho Control Plane"
+# A Hisho health run takes several seconds of SSH probes; Core caches it for 30 s.
+UPDATE_INTERVAL: Final = timedelta(seconds=60)
+REQUEST_TIMEOUT: Final = 30
 
-DATA_FLEET_HEALTH = "fleet_health"
-DATA_STATUS = "status"
+MACHINE_STATES: Final = ["up", "asleep", "away", "maintenance", "unreachable", "faulted"]
+FOLDER_STATES: Final = ["ok", "info", "warn", "error", "unknown"]
+WORKER_STATES: Final = ["running", "blocked", "unknown"]

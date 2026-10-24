@@ -1,17 +1,10 @@
-"""Sensor platform for Hisho.
-
-Adapted to the live Hisho fleet-health payload shape:
-  counts: {machines, reachable, unreachable}
-  machines: [{host, reachable, reason, checked_at}]
-  services: [{name, type, unit, active, state}]
-  compute_workers: [{worker, ok, blocked, detail}]
-  all_machines_reachable, all_services_active
-"""
+"""Sensors: fleet counts and sync on the hub, readings on each machine."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -20,253 +13,285 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTime
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.typing import StateType
+from homeassistant.util import dt as dt_util
 
-from .const import DATA_FLEET_HEALTH, DATA_STATUS, DOMAIN, MANUFACTURER, MODEL
-from .coordinator import HishoCoordinator
+from .const import FOLDER_STATES, MACHINE_STATES, WORKER_STATES
+from .coordinator import HishoConfigEntry, HishoCoordinator, HishoData
+from .entity import HishoEntity, HishoMachineEntity
 
-FLEET_STATES = ["healthy", "degraded", "error"]
-COMPUTE_STATES = ["all_ok", "degraded", "no_workers"]
-
-
-def _fh(data: dict[str, Any]) -> dict[str, Any]:
-    return (data or {}).get(DATA_FLEET_HEALTH) or {}
+PARALLEL_UPDATES = 0  # the coordinator does all the fetching
 
 
-def _status(data: dict[str, Any]) -> dict[str, Any]:
-    return (data or {}).get(DATA_STATUS) or {}
-
-
-def _fleet_state(data: dict[str, Any]) -> str:
-    fh = _fh(data)
-    if not fh.get("all_machines_reachable") or not fh.get("all_services_active"):
-        unreach = (fh.get("counts") or {}).get("unreachable", 0)
-        return "error" if unreach > 1 else "degraded"
-    return "healthy"
-
-
-def _compute_state(data: dict[str, Any]) -> str:
-    workers = _fh(data).get("compute_workers") or []
-    if not workers:
-        return "no_workers"
-    return "all_ok" if all(w.get("ok") for w in workers) else "degraded"
+def _timestamp(value: Any) -> datetime | None:
+    return dt_util.parse_datetime(value) if isinstance(value, str) else None
 
 
 @dataclass(frozen=True, kw_only=True)
-class HishoSensorDescription(SensorEntityDescription):
-    """Describes a Hisho sensor."""
-    value_fn: Callable[[dict[str, Any]], Any]
+class HishoHubSensorDescription(SensorEntityDescription):
+    """A reading of the whole fleet."""
+
+    value_fn: Callable[[HishoData], StateType]
 
 
-SENSORS: tuple[HishoSensorDescription, ...] = (
-    HishoSensorDescription(
-        key="fleet_health",
-        name="Fleet health",
+@dataclass(frozen=True, kw_only=True)
+class HishoMachineSensorDescription(SensorEntityDescription):
+    """A reading of one machine."""
+
+    value_fn: Callable[[dict[str, Any]], StateType | datetime]
+    # Whether this machine gets the entity at all (no GPU, no GPU sensor).
+    exists_fn: Callable[[dict[str, Any]], bool] = lambda _: True
+    # Unavailable while the value is missing: the machine is asleep or agentless.
+    from_agent: bool = True
+
+
+HUB_SENSORS: tuple[HishoHubSensorDescription, ...] = (
+    HishoHubSensorDescription(
+        key="machines_online",
+        translation_key="machines_online",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: (d.raw.get("counts") or {}).get("reachable"),
+    ),
+    HishoHubSensorDescription(
+        key="machines_faulted",
+        translation_key="machines_faulted",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: (d.raw.get("counts") or {}).get("faulted"),
+    ),
+    HishoHubSensorDescription(
+        key="sync_conflicts",
+        translation_key="sync_conflicts",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: d.sync.get("conflicts"),
+    ),
+)
+
+MACHINE_SENSORS: tuple[HishoMachineSensorDescription, ...] = (
+    HishoMachineSensorDescription(
+        key="state",
+        translation_key="machine_state",
         device_class=SensorDeviceClass.ENUM,
-        options=FLEET_STATES,
-        value_fn=_fleet_state,
+        options=MACHINE_STATES,
+        value_fn=lambda m: m.get("state"),
+        from_agent=False,
     ),
-    HishoSensorDescription(
-        key="machines_reachable",
-        name="Machines reachable",
+    HishoMachineSensorDescription(
+        key="memory_usage",
+        translation_key="memory_usage",
+        native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="machines",
-        value_fn=lambda d: (_fh(d).get("counts") or {}).get("reachable", 0),
+        suggested_display_precision=0,
+        value_fn=lambda m: m.get("memory_percent"),
     ),
-    HishoSensorDescription(
-        key="machines_total",
-        name="Machines total",
+    HishoMachineSensorDescription(
+        key="disk_usage",
+        translation_key="disk_usage",
+        native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="machines",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: (_fh(d).get("counts") or {}).get("machines", 0),
+        suggested_display_precision=0,
+        value_fn=lambda m: m.get("disk_percent"),
     ),
-    HishoSensorDescription(
-        key="services_active",
-        name="Services active",
+    HishoMachineSensorDescription(
+        key="gpu_usage",
+        translation_key="gpu_usage",
+        native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="services",
-        value_fn=lambda d: sum(1 for s in (_fh(d).get("services") or []) if s.get("active")),
+        suggested_display_precision=0,
+        value_fn=lambda m: m.get("gpu_percent"),
+        exists_fn=lambda m: m.get("gpu_name") is not None,
     ),
-    HishoSensorDescription(
-        key="compute_state",
-        name="Compute workers",
-        device_class=SensorDeviceClass.ENUM,
-        options=COMPUTE_STATES,
-        value_fn=_compute_state,
+    HishoMachineSensorDescription(
+        key="jobs_running",
+        translation_key="jobs_running",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda m: m.get("jobs_running"),
     ),
-    HishoSensorDescription(
-        key="last_sweep",
-        name="Last fleet sweep",
+    HishoMachineSensorDescription(
+        key="jobs_queued",
+        translation_key="jobs_queued",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda m: m.get("jobs_queued"),
+    ),
+    HishoMachineSensorDescription(
+        key="last_boot",
+        translation_key="last_boot",
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: _fh(d).get("generated_at"),
+        value_fn=lambda m: _timestamp(m.get("booted_at")),
     ),
-    HishoSensorDescription(
-        key="version",
-        name="Version",
+    HishoMachineSensorDescription(
+        key="containers_running",
+        translation_key="containers_running",
+        state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: _status(d).get("version"),
+        value_fn=lambda m: m.get("containers_running"),
     ),
+    HishoMachineSensorDescription(
+        key="heartbeat_age",
+        translation_key="heartbeat_age",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        # Changes on every poll; worth having, not worth recording by default.
+        entity_registry_enabled_default=False,
+        value_fn=lambda m: m.get("heartbeat_age_seconds"),
+    ),
+)
+
+FOLDER_SENSOR = SensorEntityDescription(
+    key="sync_folder",
+    translation_key="sync_folder",
+    device_class=SensorDeviceClass.ENUM,
+    options=FOLDER_STATES,
+)
+WORKER_SENSOR = SensorEntityDescription(
+    key="compute_worker",
+    translation_key="compute_worker",
+    device_class=SensorDeviceClass.ENUM,
+    options=WORKER_STATES,
 )
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: HishoConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up Hisho sensors."""
-    coordinator: HishoCoordinator = hass.data[DOMAIN][entry.entry_id]
+    """Add the hub sensors, then each machine's, folder's and worker's as they appear."""
+    coordinator = entry.runtime_data
+    async_add_entities(HishoHubSensor(coordinator, d) for d in HUB_SENSORS)
+    known: set[str] = set()
 
-    entities: list[SensorEntity] = [
-        HishoSensor(coordinator, entry, description) for description in SENSORS
-    ]
-
-    # Per-machine sensors
-    known_machines: set[str] = set()
-    for machine in (_fh(coordinator.data) or {}).get("machines", []):
-        host = machine.get("host")
-        if host:
-            entities.append(HishoMachineSensor(coordinator, entry, host))
-            known_machines.add(host)
-
-    # Per-compute-worker sensors
-    known_workers: set[str] = set()
-    for worker in (_fh(coordinator.data) or {}).get("compute_workers", []):
-        name = worker.get("worker")
-        if name:
-            entities.append(HishoComputeWorkerSensor(coordinator, entry, name))
-            known_workers.add(name)
-
-    async_add_entities(entities)
-
+    @callback
     def _add_new() -> None:
-        new_entities = []
-        for machine in (_fh(coordinator.data) or {}).get("machines", []):
-            host = machine.get("host")
-            if host and host not in known_machines:
-                known_machines.add(host)
-                new_entities.append(HishoMachineSensor(coordinator, entry, host))
-        for worker in (_fh(coordinator.data) or {}).get("compute_workers", []):
-            name = worker.get("worker")
-            if name and name not in known_workers:
-                known_workers.add(name)
-                new_entities.append(HishoComputeWorkerSensor(coordinator, entry, name))
-        if new_entities:
-            async_add_entities(new_entities)
+        data = coordinator.data
+        new: list[SensorEntity] = []
+        for machine_id, machine in data.machines.items():
+            for desc in MACHINE_SENSORS:
+                key = f"machine:{machine_id}:{desc.key}"
+                if key not in known and desc.exists_fn(machine):
+                    known.add(key)
+                    new.append(HishoMachineSensor(coordinator, machine_id, desc))
+        for folder_id in data.folders:
+            if (key := f"folder:{folder_id}") not in known:
+                known.add(key)
+                new.append(HishoFolderSensor(coordinator, folder_id))
+        for worker_id in data.workers:
+            if (key := f"worker:{worker_id}") not in known:
+                known.add(key)
+                new.append(HishoWorkerSensor(coordinator, worker_id))
+        if new:
+            async_add_entities(new)
 
+    _add_new()
     entry.async_on_unload(coordinator.async_add_listener(_add_new))
 
 
-class HishoSensor(CoordinatorEntity[HishoCoordinator], SensorEntity):
-    """A fleet-wide Hisho sensor."""
+class HishoHubSensor(HishoEntity, SensorEntity):
+    """A fleet-wide reading."""
 
-    entity_description: HishoSensorDescription
-    _attr_has_entity_name = True
+    entity_description: HishoHubSensorDescription
 
-    def __init__(self, coordinator, entry, description):
-        super().__init__(coordinator)
+    def __init__(self, coordinator: HishoCoordinator, description: HishoHubSensorDescription) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, description.key)
         self.entity_description = description
-        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
 
     @property
-    def device_info(self) -> dict[str, Any]:
-        return {
-            "identifiers": {(DOMAIN, "control_plane")},
-            "name": "Hisho Control Plane",
-            "manufacturer": MANUFACTURER,
-            "model": MODEL,
-            "configuration_url": self.coordinator.base_url,
-        }
+    def available(self) -> bool:
+        """Unavailable while Hisho cannot give the number."""
+        return super().available and self.native_value is not None
 
     @property
-    def native_value(self) -> Any:
-        return self.entity_description.value_fn(self.coordinator.data or {})
+    def native_value(self) -> StateType:
+        """The reading."""
+        return self.entity_description.value_fn(self.coordinator.data)
 
 
-class HishoMachineSensor(CoordinatorEntity[HishoCoordinator], SensorEntity):
-    """Per-machine reachability sensor (from fleet-health machines array)."""
+class HishoMachineSensor(HishoMachineEntity, SensorEntity):
+    """A reading of one machine."""
 
-    _attr_has_entity_name = True
-    _attr_name = "Status"
-    _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = ["reachable", "unreachable"]
+    entity_description: HishoMachineSensorDescription
 
-    def __init__(self, coordinator, entry, host: str):
-        super().__init__(coordinator)
-        self._host = host
-        self._attr_unique_id = f"{entry.entry_id}_machine_{host}"
-
-    def _machine(self) -> dict[str, Any]:
-        for m in (_fh(self.coordinator.data) or {}).get("machines", []):
-            if m.get("host") == self._host:
-                return m
-        return {}
+    def __init__(
+        self, coordinator: HishoCoordinator, machine_id: str, description: HishoMachineSensorDescription
+    ) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, machine_id, description.key)
+        self.entity_description = description
 
     @property
-    def device_info(self) -> dict[str, Any]:
-        return {
-            "identifiers": {(DOMAIN, f"machine_{self._host}")},
-            "name": self._host.replace("-", " ").title(),
-            "manufacturer": MANUFACTURER,
-            "model": "Hisho machine",
-            "via_device": (DOMAIN, "control_plane"),
-        }
+    def available(self) -> bool:
+        """A reading the agent supplies is unavailable while it is missing."""
+        if not super().available:
+            return False
+        return not self.entity_description.from_agent or self.native_value is not None
 
     @property
-    def native_value(self) -> str:
-        return "reachable" if self._machine().get("reachable") else "unreachable"
+    def native_value(self) -> StateType | datetime:
+        """The reading."""
+        machine = self.machine
+        return self.entity_description.value_fn(machine) if machine is not None else None
+
+
+class HishoFolderSensor(HishoEntity, SensorEntity):
+    """How one synced folder is doing."""
+
+    entity_description = FOLDER_SENSOR
+
+    def __init__(self, coordinator: HishoCoordinator, folder_id: str) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, f"sync_folder_{folder_id}")
+        self.folder_id = folder_id
+        folder = coordinator.data.folders[folder_id]
+        self._attr_translation_placeholders = {"folder": folder.get("name") or folder_id}
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        m = self._machine()
-        return {"host": self._host, "reason": m.get("reason"), "checked_at": m.get("checked_at")}
-
-
-class HishoComputeWorkerSensor(CoordinatorEntity[HishoCoordinator], SensorEntity):
-    """Per-compute-worker status sensor."""
-
-    _attr_has_entity_name = True
-    _attr_name = "Compute"
-    _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = ["ok", "error", "unknown"]
-
-    def __init__(self, coordinator, entry, worker: str):
-        super().__init__(coordinator)
-        self._worker = worker
-        self._attr_unique_id = f"{entry.entry_id}_compute_{worker}"
-
-    def _worker_data(self) -> dict[str, Any]:
-        for w in (_fh(self.coordinator.data) or {}).get("compute_workers", []):
-            if w.get("worker") == self._worker:
-                return w
-        return {}
+    def available(self) -> bool:
+        """Unavailable once the folder is no longer synced."""
+        return super().available and self.folder_id in self.coordinator.data.folders
 
     @property
-    def device_info(self) -> dict[str, Any]:
-        return {
-            "identifiers": {(DOMAIN, f"machine_{self._worker}")},
-            "name": self._worker.replace("-", " ").title(),
-            "manufacturer": MANUFACTURER,
-            "model": "Hisho machine",
-            "via_device": (DOMAIN, "control_plane"),
-        }
-
-    @property
-    def native_value(self) -> str:
-        w = self._worker_data()
-        if w.get("ok"):
-            return "ok"
-        if w.get("blocked"):
-            return "error"
-        return "unknown"
+    def native_value(self) -> str | None:
+        """ok, info, warn, error or unknown."""
+        folder = self.coordinator.data.folders.get(self.folder_id) or {}
+        status = folder.get("status")
+        return status if status in FOLDER_STATES else "unknown"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        w = self._worker_data()
-        return {"worker": self._worker, "detail": w.get("detail"), "blocked": w.get("blocked")}
+        """What Syncthing says about it."""
+        folder = self.coordinator.data.folders.get(self.folder_id) or {}
+        return {
+            "verdict": folder.get("verdict"),
+            "out_of_sync_files": folder.get("out_of_sync_files"),
+            "last_sync": folder.get("last_sync_at"),
+        }
+
+
+class HishoWorkerSensor(HishoEntity, SensorEntity):
+    """Whether one compute worker can take jobs."""
+
+    entity_description = WORKER_SENSOR
+
+    def __init__(self, coordinator: HishoCoordinator, worker_id: str) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, f"compute_worker_{worker_id}")
+        self.worker_id = worker_id
+        self._attr_translation_placeholders = {"worker": worker_id}
+
+    @property
+    def available(self) -> bool:
+        """Unavailable once the worker is gone."""
+        return super().available and self.worker_id in self.coordinator.data.workers
+
+    @property
+    def native_value(self) -> str | None:
+        """running, blocked or unknown."""
+        state = (self.coordinator.data.workers.get(self.worker_id) or {}).get("state")
+        return state if state in WORKER_STATES else "unknown"

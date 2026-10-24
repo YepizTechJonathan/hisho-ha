@@ -1,17 +1,13 @@
 {
   "domain": "hisho",
   "name": "Hisho",
-  "codeowners": [
-    "@YepizTechJonathan"
-  ],
+  "codeowners": ["@YepizTechJonathan"],
   "config_flow": true,
+  "dependencies": [],
   "documentation": "https://github.com/YepizTechJonathan/hisho-ha",
   "integration_type": "hub",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/YepizTechJonathan/hisho-ha/issues",
   "requirements": [],
-  "version": "0.2.0",
-  "loggers": [
-    "custom_components.hisho"
-  ]
+  "version": "1.0.0"
 }

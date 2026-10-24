@@ -2,65 +2,113 @@
   "config": {
     "step": {
       "user": {
-        "title": "Hisho control plane",
-        "description": "Enter the address of your Hisho control plane. It must be reachable from Home Assistant on the local network (Tailscale addresses work too).",
+        "title": "Connect to Hisho",
+        "description": "Hisho Core's address, as this Home Assistant reaches it (for example {example_url}), and the read-only token from `hisho home-assistant token`.",
         "data": {
-          "host": "Host or IP address",
-          "port": "API port",
-          "token": "API token (optional)",
-          "scan_interval": "Poll interval (seconds)"
+          "url": "[%key:common::config_flow::data::url%]",
+          "token": "[%key:common::config_flow::data::api_token%]",
+          "verify_ssl": "[%key:common::config_flow::data::verify_ssl%]"
+        },
+        "data_description": {
+          "url": "Where Hisho Core answers. Over Tailscale, its https ts.net name.",
+          "token": "Made on the Core machine with `hisho home-assistant token`. It can read Hisho's state and nothing else.",
+          "verify_ssl": "Turn off only for a Core with a self-signed certificate."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Hisho needs a new token",
+        "description": "Hisho at {url} no longer accepts the saved token (it was rotated). Make a new one on the Core machine with `hisho home-assistant token --rotate` and paste it here.",
+        "data": {
+          "token": "[%key:common::config_flow::data::api_token%]"
+        },
+        "data_description": {
+          "token": "The token `hisho home-assistant token --rotate` showed."
+        }
+      },
+      "reconfigure": {
+        "title": "Change the Hisho connection",
+        "description": "Use this when Hisho Core moves to another address, or with a new token.",
+        "data": {
+          "url": "[%key:common::config_flow::data::url%]",
+          "token": "[%key:common::config_flow::data::api_token%]",
+          "verify_ssl": "[%key:common::config_flow::data::verify_ssl%]"
+        },
+        "data_description": {
+          "url": "Where Hisho Core answers now.",
+          "token": "The read-only token from `hisho home-assistant token`.",
+          "verify_ssl": "Turn off only for a Core with a self-signed certificate."
         }
       }
     },
     "error": {
-      "cannot_connect": "Could not reach a Hisho control plane at that address. Check the host/port and that the Hisho API is running.",
-      "unknown": "Unexpected error."
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+      "invalid_auth": "Hisho refused the token. Make one with `hisho home-assistant token` on the Core machine.",
+      "not_hisho": "Something answered at that address, but not Hisho Core (or a Hisho too old to have the Home Assistant route).",
+      "unsupported_schema": "This Hisho sends data version {schema}, newer than this integration understands. Update the integration in HACS.",
+      "unknown": "[%key:common::config_flow::error::unknown%]"
     },
     "abort": {
-      "already_configured": "This Hisho control plane is already configured."
+      "already_configured": "[%key:common::config_flow::abort::already_configured_service%]",
+      "reauth_successful": "[%key:common::config_flow::abort::reauth_successful%]",
+      "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]",
+      "wrong_hisho": "That address is a different Hisho than the one this entry belongs to. Add it as a new integration instead."
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Hisho options",
-        "data": {
-          "scan_interval": "Poll interval (seconds)"
+  "entity": {
+    "binary_sensor": {
+      "online": { "name": "Online" },
+      "sync_connected": { "name": "Sync connected" },
+      "safe_to_shut_down": { "name": "Safe to shut down" },
+      "sync_problem": { "name": "Sync problem" },
+      "sync_peer": { "name": "{peer} sync" },
+      "service": { "name": "{service}" }
+    },
+    "sensor": {
+      "machines_online": { "name": "Machines online", "unit_of_measurement": "machines" },
+      "machines_faulted": { "name": "Machines faulted", "unit_of_measurement": "machines" },
+      "sync_conflicts": { "name": "Sync conflicts", "unit_of_measurement": "files" },
+      "machine_state": {
+        "name": "State",
+        "state": {
+          "up": "Up",
+          "asleep": "Asleep",
+          "away": "Away",
+          "maintenance": "Maintenance",
+          "unreachable": "Unreachable",
+          "faulted": "Faulted"
+        }
+      },
+      "memory_usage": { "name": "Memory usage" },
+      "disk_usage": { "name": "Disk usage" },
+      "gpu_usage": { "name": "GPU usage" },
+      "jobs_running": { "name": "Jobs running", "unit_of_measurement": "jobs" },
+      "jobs_queued": { "name": "Jobs queued", "unit_of_measurement": "jobs" },
+      "last_boot": { "name": "Last boot" },
+      "containers_running": { "name": "Containers running", "unit_of_measurement": "containers" },
+      "heartbeat_age": { "name": "Heartbeat age" },
+      "sync_folder": {
+        "name": "Sync {folder}",
+        "state": {
+          "ok": "In sync",
+          "info": "In sync (note)",
+          "warn": "Needs attention",
+          "error": "Error",
+          "unknown": "Unknown"
+        }
+      },
+      "compute_worker": {
+        "name": "{worker} compute",
+        "state": {
+          "running": "Running",
+          "blocked": "Blocked",
+          "unknown": "Unknown"
         }
       }
     }
   },
-  "entity": {
-    "sensor": {
-      "fleet_health": {
-        "name": "Fleet health"
-      },
-      "machines_reachable": {
-        "name": "Machines reachable"
-      },
-      "machines_total": {
-        "name": "Machines total"
-      },
-      "services_active": {
-        "name": "Services active"
-      },
-      "compute_state": {
-        "name": "Compute workers"
-      },
-      "last_sweep": {
-        "name": "Last fleet sweep"
-      },
-      "version": {
-        "name": "Version"
-      }
-    },
-    "binary_sensor": {
-      "fleet_ok": {
-        "name": "Fleet OK"
-      },
-      "services_ok": {
-        "name": "Services OK"
-      }
-    }
+  "exceptions": {
+    "cannot_connect": { "message": "Cannot reach Hisho: {error}" },
+    "invalid_auth": { "message": "Hisho refused the token." },
+    "unsupported_schema": { "message": "Hisho sends data version {schema}, newer than this integration understands. Update the integration." }
   }
 }

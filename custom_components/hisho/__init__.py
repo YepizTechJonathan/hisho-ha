@@ -1,65 +1,45 @@
-"""The Hisho integration.
+"""The Hisho integration: a Hisho fleet as Home Assistant devices.
 
-Connects to a Hisho fleet control plane and exposes the fleet
-(machine reachability, service status, compute workers, power state) as
-Home Assistant sensors, binary sensors, and button entities.
-
-Direction: Hisho feeds information INTO Home Assistant for dashboards.
+Home Assistant polls one Hisho Core route, ``GET /api/ha/snapshot``, with the
+read-only token ``hisho home-assistant token`` makes. Each machine becomes a
+device under a Hisho hub device.
 """
 
 from __future__ import annotations
 
-import logging
-
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 
-from .const import CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL, CONF_TOKEN, DEFAULT_PORT, DEFAULT_SCAN_INTERVAL, DOMAIN
-from .coordinator import HishoCoordinator
+from .coordinator import HishoConfigEntry, HishoCoordinator
 
-_LOGGER = logging.getLogger(__name__)
-
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON]
-
-CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up the Hisho integration (config-entry only)."""
-    hass.data.setdefault(DOMAIN, {})
-    return True
-
-
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: HishoConfigEntry) -> bool:
     """Set up Hisho from a config entry."""
-    host = entry.data[CONF_HOST]
-    port = entry.data.get(CONF_PORT, DEFAULT_PORT)
-    token = entry.data.get(CONF_TOKEN, "")
-    scan_interval = entry.options.get(
-        CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-    )
-
-    coordinator = HishoCoordinator(hass, host, port, token, scan_interval)
+    coordinator = HishoCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
-
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    entry.async_on_unload(entry.add_update_listener(_async_update_options))
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: HishoConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        coordinator: HishoCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
-        await coordinator.async_shutdown()
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def _async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload the entry when options change."""
-    await hass.config_entries.async_reload(entry.entry_id)
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: HishoConfigEntry, device: dr.DeviceEntry
+) -> bool:
+    """Let a device be deleted by hand once Hisho no longer reports it."""
+    coordinator = entry.runtime_data
+    if (dr_id := next(iter(device.identifiers), None)) is None:
+        return True
+    if dr_id[1] == coordinator.instance_id:
+        return False  # the hub stays while the entry does
+    return not any(
+        coordinator.machine_identifier(machine_id) in device.identifiers
+        for machine_id in coordinator.data.machines
+    )

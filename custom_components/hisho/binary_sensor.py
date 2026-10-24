@@ -1,4 +1,4 @@
-"""Binary sensor platform for Hisho."""
+"""Binary sensors: online, sync and services."""
 
 from __future__ import annotations
 
@@ -11,175 +11,205 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.const import EntityCategory
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DATA_FLEET_HEALTH, DOMAIN, MANUFACTURER
-from .coordinator import HishoCoordinator
+from .coordinator import HishoConfigEntry, HishoCoordinator
+from .entity import HishoEntity, HishoMachineEntity
 
-
-def _fh(data: dict[str, Any]) -> dict[str, Any]:
-    return (data or {}).get(DATA_FLEET_HEALTH) or {}
+PARALLEL_UPDATES = 0
 
 
 @dataclass(frozen=True, kw_only=True)
-class HishoBinaryDescription(BinarySensorEntityDescription):
-    """Describes a fleet-wide Hisho binary sensor."""
-    value_fn: Callable[[dict[str, Any]], bool]
+class HishoMachineBinaryDescription(BinarySensorEntityDescription):
+    """A yes/no about one machine."""
+
+    value_fn: Callable[[dict[str, Any]], bool | None]
+    exists_fn: Callable[[dict[str, Any]], bool] = lambda _: True
+    from_agent: bool = True
 
 
-BINARY_SENSORS: tuple[HishoBinaryDescription, ...] = (
-    HishoBinaryDescription(
-        key="fleet_ok",
-        name="Fleet OK",
-        device_class=BinarySensorDeviceClass.PROBLEM,
-        value_fn=lambda d: not bool(_fh(d).get("all_machines_reachable")),
+MACHINE_BINARY_SENSORS: tuple[HishoMachineBinaryDescription, ...] = (
+    HishoMachineBinaryDescription(
+        key="online",
+        translation_key="online",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        value_fn=lambda m: m.get("online"),
+        from_agent=False,
     ),
-    HishoBinaryDescription(
-        key="services_ok",
-        name="Services OK",
-        device_class=BinarySensorDeviceClass.PROBLEM,
-        value_fn=lambda d: not bool(_fh(d).get("all_services_active")),
+    HishoMachineBinaryDescription(
+        key="sync_connected",
+        translation_key="sync_connected",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        value_fn=lambda m: m.get("sync_connected"),
+        # Core's own Syncthing is not a peer of itself.
+        exists_fn=lambda m: m.get("sync_connected") is not None,
+        from_agent=False,
     ),
+    HishoMachineBinaryDescription(
+        key="safe_to_shut_down",
+        translation_key="safe_to_shut_down",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda m: m.get("safe_to_shut_down"),
+    ),
+)
+
+SYNC_PROBLEM = BinarySensorEntityDescription(
+    key="sync_problem", translation_key="sync_problem", device_class=BinarySensorDeviceClass.PROBLEM
+)
+SYNC_PEER = BinarySensorEntityDescription(
+    key="sync_peer", translation_key="sync_peer", device_class=BinarySensorDeviceClass.CONNECTIVITY
+)
+SERVICE = BinarySensorEntityDescription(
+    key="service", translation_key="service", device_class=BinarySensorDeviceClass.RUNNING
 )
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: HishoConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up Hisho binary sensors."""
-    coordinator: HishoCoordinator = hass.data[DOMAIN][entry.entry_id]
+    """Add the hub's sync sensor, then machines, services and peers as they appear."""
+    coordinator = entry.runtime_data
+    async_add_entities([HishoSyncProblem(coordinator)])
+    known: set[str] = set()
 
-    entities: list[BinarySensorEntity] = [
-        HishoBinarySensor(coordinator, entry, description)
-        for description in BINARY_SENSORS
-    ]
-
-    # Per-machine reachability binary sensors
-    known_machines: set[str] = set()
-    for machine in _fh(coordinator.data).get("machines", []):
-        host = machine.get("host")
-        if host:
-            entities.append(HishoMachineReachability(coordinator, entry, host))
-            known_machines.add(host)
-
-    # Per-service active binary sensors
-    known_services: set[str] = set()
-    for service in _fh(coordinator.data).get("services", []):
-        name = service.get("name")
-        if name:
-            entities.append(HishoServiceActive(coordinator, entry, name))
-            known_services.add(name)
-
-    async_add_entities(entities)
-
+    @callback
     def _add_new() -> None:
-        new_entities = []
-        for machine in _fh(coordinator.data).get("machines", []):
-            host = machine.get("host")
-            if host and host not in known_machines:
-                known_machines.add(host)
-                new_entities.append(HishoMachineReachability(coordinator, entry, host))
-        for service in _fh(coordinator.data).get("services", []):
-            name = service.get("name")
-            if name and name not in known_services:
-                known_services.add(name)
-                new_entities.append(HishoServiceActive(coordinator, entry, name))
-        if new_entities:
-            async_add_entities(new_entities)
+        data = coordinator.data
+        new: list[BinarySensorEntity] = []
+        for machine_id, machine in data.machines.items():
+            for desc in MACHINE_BINARY_SENSORS:
+                key = f"machine:{machine_id}:{desc.key}"
+                if key not in known and desc.exists_fn(machine):
+                    known.add(key)
+                    new.append(HishoMachineBinarySensor(coordinator, machine_id, desc))
+            for service in machine.get("services") or []:
+                key = f"service:{machine_id}:{service.get('id')}"
+                if service.get("id") and key not in known:
+                    known.add(key)
+                    new.append(HishoServiceSensor(coordinator, machine_id, service["id"]))
+        for peer_id in data.peers:
+            if (key := f"peer:{peer_id}") not in known:
+                known.add(key)
+                new.append(HishoSyncPeer(coordinator, peer_id))
+        if new:
+            async_add_entities(new)
 
+    _add_new()
     entry.async_on_unload(coordinator.async_add_listener(_add_new))
 
 
-class HishoBinarySensor(CoordinatorEntity[HishoCoordinator], BinarySensorEntity):
-    """A fleet-wide problem binary sensor."""
+class HishoSyncProblem(HishoEntity, BinarySensorEntity):
+    """On when the synced vault needs attention."""
 
-    entity_description: HishoBinaryDescription
-    _attr_has_entity_name = True
+    entity_description = SYNC_PROBLEM
 
-    def __init__(self, coordinator, entry, description):
-        super().__init__(coordinator)
+    def __init__(self, coordinator: HishoCoordinator) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, SYNC_PROBLEM.key)
+
+    @property
+    def available(self) -> bool:
+        """Unavailable when Hisho could not read Syncthing."""
+        return super().available and bool(self.coordinator.data.sync.get("available"))
+
+    @property
+    def is_on(self) -> bool:
+        """True when something needs attention."""
+        return bool(self.coordinator.data.sync.get("problem"))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """What is wrong, in Hisho's words."""
+        sync = self.coordinator.data.sync
+        return {"severity": sync.get("severity"), "problems": sync.get("problems") or []}
+
+
+class HishoSyncPeer(HishoEntity, BinarySensorEntity):
+    """A Syncthing peer that is not a fleet machine, e.g. a phone."""
+
+    entity_description = SYNC_PEER
+
+    def __init__(self, coordinator: HishoCoordinator, peer_id: str) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, f"sync_peer_{peer_id}")
+        self.peer_id = peer_id
+        peer = coordinator.data.peers[peer_id]
+        self._attr_translation_placeholders = {"peer": peer.get("name") or peer_id}
+
+    @property
+    def available(self) -> bool:
+        """Unavailable once the peer is removed."""
+        return super().available and self.peer_id in self.coordinator.data.peers
+
+    @property
+    def is_on(self) -> bool | None:
+        """Connected now."""
+        peer = self.coordinator.data.peers.get(self.peer_id)
+        return bool(peer.get("connected")) if peer else None
+
+
+class HishoMachineBinarySensor(HishoMachineEntity, BinarySensorEntity):
+    """A yes/no about one machine."""
+
+    entity_description: HishoMachineBinaryDescription
+
+    def __init__(
+        self, coordinator: HishoCoordinator, machine_id: str, description: HishoMachineBinaryDescription
+    ) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, machine_id, description.key)
         self.entity_description = description
-        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
 
     @property
-    def device_info(self) -> dict[str, Any]:
-        return {
-            "identifiers": {(DOMAIN, "control_plane")},
-            "name": "Hisho Control Plane",
-            "manufacturer": MANUFACTURER,
-            "configuration_url": self.coordinator.base_url,
-        }
+    def available(self) -> bool:
+        """A reading the agent supplies is unavailable while it is missing."""
+        if not super().available:
+            return False
+        return not self.entity_description.from_agent or self.is_on is not None
 
     @property
-    def is_on(self) -> bool:
-        return bool(self.entity_description.value_fn(self.coordinator.data or {}))
+    def is_on(self) -> bool | None:
+        """The reading."""
+        machine = self.machine
+        if machine is None:
+            return None
+        value = self.entity_description.value_fn(machine)
+        return None if value is None else bool(value)
 
 
-class HishoMachineReachability(CoordinatorEntity[HishoCoordinator], BinarySensorEntity):
-    """Whether a machine is reachable."""
+class HishoServiceSensor(HishoMachineEntity, BinarySensorEntity):
+    """One Hisho service on the machine that runs it."""
 
-    _attr_has_entity_name = True
-    _attr_name = "Reachable"
-    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    entity_description = SERVICE
 
-    def __init__(self, coordinator, entry, host: str):
-        super().__init__(coordinator)
-        self._host = host
-        self._attr_unique_id = f"{entry.entry_id}_machine_{host}_reachable"
-
-    def _machine(self) -> dict[str, Any]:
-        for m in _fh(self.coordinator.data).get("machines", []):
-            if m.get("host") == self._host:
-                return m
-        return {}
+    def __init__(self, coordinator: HishoCoordinator, machine_id: str, service_id: str) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, machine_id, f"service_{service_id}")
+        self.service_id = service_id
+        self._attr_translation_placeholders = {"service": service_id}
 
     @property
-    def device_info(self) -> dict[str, Any]:
-        return {
-            "identifiers": {(DOMAIN, f"machine_{self._host}")},
-            "name": self._host.replace("-", " ").title(),
-            "manufacturer": MANUFACTURER,
-            "model": "Hisho machine",
-            "via_device": (DOMAIN, "control_plane"),
-        }
+    def _service(self) -> dict[str, Any] | None:
+        machine = self.machine or {}
+        return next((s for s in machine.get("services") or [] if s.get("id") == self.service_id), None)
 
     @property
-    def is_on(self) -> bool:
-        return bool(self._machine().get("reachable"))
-
-
-class HishoServiceActive(CoordinatorEntity[HishoCoordinator], BinarySensorEntity):
-    """Whether a service is active."""
-
-    _attr_has_entity_name = True
-    _attr_device_class = BinarySensorDeviceClass.RUNNING
-
-    def __init__(self, coordinator, entry, service_name: str):
-        super().__init__(coordinator)
-        self._service_name = service_name
-        self._attr_name = service_name.replace("-", " ").replace("_", " ").title()
-        self._attr_unique_id = f"{entry.entry_id}_service_{service_name}"
-
-    def _service(self) -> dict[str, Any]:
-        for s in _fh(self.coordinator.data).get("services", []):
-            if s.get("name") == self._service_name:
-                return s
-        return {}
+    def available(self) -> bool:
+        """Unavailable once Hisho stops watching the service."""
+        return super().available and self._service is not None
 
     @property
-    def device_info(self) -> dict[str, Any]:
-        return {
-            "identifiers": {(DOMAIN, "control_plane")},
-            "name": "Hisho Control Plane",
-            "manufacturer": MANUFACTURER,
-            "configuration_url": self.coordinator.base_url,
-        }
+    def is_on(self) -> bool | None:
+        """Running (a one-shot: its last run succeeded)."""
+        service = self._service
+        return bool(service.get("running")) if service else None
 
     @property
-    def is_on(self) -> bool:
-        return bool(self._service().get("active"))
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """The systemd unit and its state."""
+        service = self._service or {}
+        return {"unit": service.get("unit"), "state": service.get("state")}
