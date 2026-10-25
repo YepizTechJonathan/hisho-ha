@@ -1,4 +1,4 @@
-"""A small client for the one Hisho Core route this integration reads."""
+"""A small client for Hisho Core's Home Assistant routes: pairing, the snapshot, actions."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import REQUEST_TIMEOUT, SNAPSHOT_PATH, SUPPORTED_SCHEMA
+from .const import ACTION_PATH, PAIR_PATH, REQUEST_TIMEOUT, SNAPSHOT_PATH, SUPPORTED_SCHEMA
 
 
 class HishoError(Exception):
@@ -19,11 +19,11 @@ class HishoConnectionError(HishoError):
 
 
 class HishoAuthError(HishoError):
-    """Hisho refused the token."""
+    """Hisho refused the token (revoked, or never paired)."""
 
 
 class HishoNotHishoError(HishoError):
-    """The address answered, but not with a Hisho snapshot."""
+    """The address answered, but not as Hisho Core (or a Hisho too old for this route)."""
 
 
 class HishoUnsupportedError(HishoError):
@@ -35,38 +35,96 @@ class HishoUnsupportedError(HishoError):
         self.schema = schema
 
 
-class HishoClient:
-    """Reads ``GET /api/ha/snapshot`` with the HA read token."""
+class HishoActionError(HishoError):
+    """Hisho refused an action: not allowed for this Home Assistant (403), or it needs confirming (409)."""
 
-    def __init__(self, session: aiohttp.ClientSession, url: str, token: str) -> None:
-        """Set up the client."""
+    def __init__(self, status: int, detail: str) -> None:
+        """Keep Hisho's status and reason."""
+        super().__init__(detail)
+        self.status = status
+        self.detail = detail
+
+
+class HishoPairingBusyError(HishoError):
+    """Hisho is not taking a new pairing request right now (too many, or too soon)."""
+
+
+class HishoClient:
+    """Talks to one Hisho Core."""
+
+    def __init__(self, session: aiohttp.ClientSession, url: str, token: str | None = None) -> None:
+        """Set up the client. No token yet = only pairing works."""
         self._session = session
         self._url = url.rstrip("/")
         self._token = token
 
-    async def async_get_snapshot(self) -> dict[str, Any]:
-        """Fetch and check one snapshot."""
+    def _headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self._token}"} if self._token else {}
+
+    async def _request(self, method: str, path: str, body: dict[str, Any] | None = None) -> tuple[int, Any]:
         try:
-            async with self._session.get(
-                self._url + SNAPSHOT_PATH,
-                headers={"Authorization": f"Bearer {self._token}"},
+            async with self._session.request(
+                method,
+                self._url + path,
+                json=body,
+                headers=self._headers(),
                 timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
             ) as resp:
-                if resp.status in (401, 403):
-                    raise HishoAuthError
-                if resp.status == 404:
-                    raise HishoNotHishoError
-                if resp.status != 200:
-                    raise HishoConnectionError(f"HTTP {resp.status}")
                 try:
                     data = await resp.json()
-                except (aiohttp.ContentTypeError, ValueError) as err:
-                    raise HishoNotHishoError from err
+                except (aiohttp.ContentTypeError, ValueError):
+                    data = None
+                return resp.status, data
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise HishoConnectionError(str(err) or type(err).__name__) from err
+
+    async def async_get_snapshot(self) -> dict[str, Any]:
+        """Fetch and check one snapshot."""
+        status, data = await self._request("GET", SNAPSHOT_PATH)
+        if status in (401, 403):
+            raise HishoAuthError
+        if status == 404 or (status == 200 and data is None):
+            raise HishoNotHishoError
+        if status != 200:
+            raise HishoConnectionError(f"HTTP {status}")
         if not isinstance(data, dict) or not data.get("instance_id") or "machines" not in data:
             raise HishoNotHishoError
         schema = data.get("schema")
         if not isinstance(schema, int) or schema > SUPPORTED_SCHEMA:
             raise HishoUnsupportedError(schema if isinstance(schema, int) else -1)
+        return data
+
+    async def async_pair_start(self, name: str, ha_id: str) -> dict[str, Any]:
+        """Ask Hisho to pair. Returns pair_id (secret), code, instance_id, poll_seconds."""
+        status, data = await self._request("POST", PAIR_PATH, {"name": name, "ha_id": ha_id})
+        if status == 429:
+            raise HishoPairingBusyError((data or {}).get("detail") or "busy")
+        if status in (404, 405) or (status == 200 and not isinstance(data, dict)):
+            raise HishoNotHishoError
+        if status != 200:
+            raise HishoConnectionError(f"HTTP {status}")
+        if not data.get("pair_id") or not data.get("code"):
+            raise HishoNotHishoError
+        return data
+
+    async def async_pair_status(self, pair_id: str) -> dict[str, Any]:
+        """pending, approved (with the token, once), denied or expired."""
+        status, data = await self._request("GET", f"{PAIR_PATH}/{pair_id}")
+        if status != 200 or not isinstance(data, dict):
+            raise HishoConnectionError(f"HTTP {status}")
+        return data
+
+    async def async_action(
+        self, action: str, target: str = "", args: dict[str, Any] | None = None, confirm: bool = False
+    ) -> Any:
+        """Press one of Hisho's controls."""
+        body: dict[str, Any] = {"action": action, "target": target, "args": args or {}}
+        if confirm:
+            body["confirm"] = True
+        status, data = await self._request("POST", ACTION_PATH, body)
+        if status == 401:
+            raise HishoAuthError
+        if status != 200:
+            detail = data.get("detail") if isinstance(data, dict) else None
+            raise HishoActionError(status, str(detail or f"HTTP {status}"))
         return data

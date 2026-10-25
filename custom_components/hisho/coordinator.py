@@ -1,20 +1,26 @@
-"""Polls Hisho Core and keeps the device registry in step with the fleet."""
+"""Polls Hisho Core, keeps the device registry in step with the fleet, and runs Hisho's controls."""
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
+import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_TOKEN, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import HishoAuthError, HishoClient, HishoError, HishoUnsupportedError
+from .api import (
+    HishoActionError,
+    HishoAuthError,
+    HishoClient,
+    HishoError,
+    HishoUnsupportedError,
+)
 from .const import DOMAIN, UPDATE_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,17 +37,29 @@ class HishoData:
     folders: dict[str, dict[str, Any]] = field(default_factory=dict)
     peers: dict[str, dict[str, Any]] = field(default_factory=dict)
     workers: dict[str, dict[str, Any]] = field(default_factory=dict)
+    alerts: dict[str, dict[str, Any]] = field(default_factory=dict)
+    devices: dict[str, dict[str, Any]] = field(default_factory=dict)
+    addons: dict[str, dict[str, Any]] = field(default_factory=dict)
+    controls: dict[str, dict[str, Any]] = field(default_factory=dict)
+    allowed: frozenset[str] = frozenset()
 
     @classmethod
     def from_snapshot(cls, raw: dict[str, Any]) -> HishoData:
         """Index a snapshot by id."""
         sync = raw.get("sync") or {}
+        machines = {m["id"]: m for m in raw.get("machines") or [] if m.get("id")}
         return cls(
             raw=raw,
-            machines={m["id"]: m for m in raw.get("machines") or [] if m.get("id")},
+            machines=machines,
             folders={f["id"]: f for f in sync.get("folders") or [] if f.get("id")},
             peers={p["id"]: p for p in sync.get("peers") or [] if p.get("id")},
             workers={w["id"]: w for w in raw.get("compute_workers") or [] if w.get("id")},
+            alerts={a["id"]: a for a in raw.get("alerts") or [] if a.get("id")},
+            # A box that is a fleet machine is that machine's device, not a second one.
+            devices={d["id"]: d for d in raw.get("devices") or [] if d.get("id") and d["id"] not in machines},
+            addons={a["name"]: a for a in raw.get("addons") or [] if a.get("name")},
+            controls=raw.get("controls") or {},
+            allowed=frozenset(raw.get("allowed") or ()),
         )
 
     @property
@@ -49,9 +67,18 @@ class HishoData:
         """The hub's sync block."""
         return self.raw.get("sync") or {}
 
+    @property
+    def maintenance(self) -> dict[str, Any]:
+        """Fleet and per-machine maintenance."""
+        return self.raw.get("maintenance") or {}
+
+    def can(self, action: str) -> bool:
+        """Whether Hisho lets this Home Assistant do that (its scopes, kept by Hisho)."""
+        return action in self.allowed
+
 
 class HishoCoordinator(DataUpdateCoordinator[HishoData]):
-    """Fetches the snapshot every minute."""
+    """Fetches the snapshot every minute; presses Hisho's buttons."""
 
     config_entry: HishoConfigEntry
 
@@ -95,12 +122,47 @@ class HishoCoordinator(DataUpdateCoordinator[HishoData]):
                 translation_placeholders={"error": str(err) or type(err).__name__},
             ) from err
         data = HishoData.from_snapshot(raw)
-        self._remove_departed_machines(data)
+        self._remove_departed(data)
         return data
+
+    async def async_action(
+        self, action: str, target: str = "", args: dict[str, Any] | None = None, confirm: bool = False
+    ) -> Any:
+        """Press one of Hisho's controls, then refresh so the result shows at once."""
+        try:
+            result = await self.client.async_action(action, target, args, confirm)
+        except HishoAuthError as err:
+            self.config_entry.async_start_reauth(self.hass)
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="invalid_auth"
+            ) from err
+        except HishoActionError as err:
+            key = {403: "action_not_allowed", 409: "action_needs_confirm"}.get(err.status, "action_failed")
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key=key,
+                translation_placeholders={"action": action, "error": err.detail},
+            ) from err
+        except HishoError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="cannot_connect",
+                translation_placeholders={"error": str(err) or type(err).__name__},
+            ) from err
+        await self.async_request_refresh()
+        return result
 
     def machine_identifier(self, machine_id: str) -> tuple[str, str]:
         """Device registry identifier of one machine."""
         return (DOMAIN, f"{self.instance_id}_{machine_id}")
+
+    def device_identifier(self, device_id: str) -> tuple[str, str]:
+        """Device registry identifier of a box an add-on knows."""
+        return (DOMAIN, f"{self.instance_id}_device_{device_id}")
+
+    def addon_identifier(self, name: str) -> tuple[str, str]:
+        """Device registry identifier of an add-on."""
+        return (DOMAIN, f"{self.instance_id}_addon_{name}")
 
     def find_device(self, identifier: tuple[str, str]) -> dr.DeviceEntry | None:
         """This entry's device with that identifier."""
@@ -109,15 +171,22 @@ class HishoCoordinator(DataUpdateCoordinator[HishoData]):
             return registry.async_get_device_by_identifier(identifier, self.config_entry.entry_id)
         return registry.async_get_device(identifiers={identifier})
 
-    def _remove_departed_machines(self, data: HishoData) -> None:
-        """A machine retired from the fleet takes its device with it."""
+    def current_identifiers(self, data: HishoData) -> set[tuple[str, str]]:
+        """Every device Hisho reports now, the hub included."""
+        return (
+            {(DOMAIN, self.instance_id)}
+            | {self.machine_identifier(m) for m in data.machines}
+            | {self.device_identifier(d) for d in data.devices}
+            | {self.addon_identifier(a) for a in data.addons}
+        )
+
+    def _remove_departed(self, data: HishoData) -> None:
+        """A machine retired, a box an add-on no longer sees, an add-on removed: its device goes."""
         if self.data is None:
             return
-        gone = set(self.data.machines) - set(data.machines)
-        if not gone:
-            return
-        for machine_id in gone:
-            device = self.find_device(self.machine_identifier(machine_id))
+        gone = self.current_identifiers(self.data) - self.current_identifiers(data)
+        for identifier in gone:
+            device = self.find_device(identifier)
             if device is not None:
                 dr.async_get(self.hass).async_update_device(
                     device.id, remove_config_entry_id=self.config_entry.entry_id

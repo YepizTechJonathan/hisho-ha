@@ -1,43 +1,536 @@
 {
-  "schema": 1,
-  "instance_id": "0123456789abcdef0123456789abcdef",
-  "name": "Hisho",
-  "version": "0.2.0",
-  "dashboard_url": "https://kihon.example.ts.net",
-  "generated_at": "2026-10-24T08:30:27.660150+00:00",
-  "core_host": "kihon",
-  "counts": {"machines": 4, "reachable": 3, "unreachable": 1, "asleep": 1, "away": 0, "maintenance": 0, "faulted": 0},
-  "machines": [
-    {"id": "kihon", "name": "Kihon", "role": "Kihon (Hisho Core + dashboard + agent)", "online": true, "state": "up",
-     "reason": null, "os": "Ubuntu 26.04.1 LTS", "kernel": "7.0.0-38-generic", "agent_version": "0.1.0",
-     "memory_percent": 17.8, "disk_percent": 12.1, "gpu_name": null, "gpu_percent": null,
-     "jobs_running": 0, "jobs_queued": 0, "booted_at": "2026-10-20T10:34:00+00:00", "heartbeat_age_seconds": 6.5,
-     "containers_running": 10, "safe_to_shut_down": false, "sync_connected": null, "is_core": true,
-     "services": [
-       {"id": "hisho-core", "name": "hisho-core", "unit": "hisho-fluent.service", "running": true, "state": "active"},
-       {"id": "hisho-yepiz-backup", "name": "hisho-yepiz-backup", "unit": "hisho-yepiz-backup.service", "running": false, "state": "failed"}
-     ]},
-    {"id": "souko", "name": "Souko", "role": "Souko workstation + agent", "online": true, "state": "up",
-     "reason": null, "os": "Souko (built on Omarchy 4.0.6)", "kernel": "7.2.8-9-omarchy", "agent_version": "0.1.0",
-     "memory_percent": 11.9, "disk_percent": 3.8, "gpu_name": "NVIDIA GeForce RTX 5090", "gpu_percent": 6.0,
-     "jobs_running": 1, "jobs_queued": 2, "booted_at": "2026-10-24T07:28:00+00:00", "heartbeat_age_seconds": 3.9,
-     "containers_running": 1, "safe_to_shut_down": true, "sync_connected": true, "is_core": false, "services": []},
-    {"id": "hashira-ten", "name": "Hashira Ten", "role": null, "online": false, "state": "asleep",
-     "reason": "ssh: connect to host port 22: Connection timed out", "os": null, "kernel": null, "agent_version": null,
-     "memory_percent": null, "disk_percent": null, "gpu_name": null, "gpu_percent": null,
-     "jobs_running": null, "jobs_queued": null, "booted_at": null, "heartbeat_age_seconds": 219944.4,
-     "containers_running": null, "safe_to_shut_down": null, "sync_connected": false, "is_core": false, "services": []},
-    {"id": "hashira-ren", "name": "Hashira Ren", "role": "hashira-gpu", "online": true, "state": "up",
-     "reason": null, "os": "Ubuntu 26.04.1 LTS", "kernel": "7.0.0-38-generic", "agent_version": "0.1.0",
-     "memory_percent": 2.0, "disk_percent": 30.4, "gpu_name": "Tesla P40", "gpu_percent": 0.0,
-     "jobs_running": 0, "jobs_queued": 0, "booted_at": "2026-10-24T07:41:00+00:00", "heartbeat_age_seconds": 6.5,
-     "containers_running": 0, "safe_to_shut_down": true, "sync_connected": true, "is_core": false, "services": []}
-  ],
-  "sync": {
-    "available": true, "severity": "info", "problem": false, "problems": [], "conflicts": 0,
-    "folders": [{"id": "hisho-vault", "name": "Hisho vault", "status": "ok", "verdict": "in sync",
-                 "out_of_sync_files": 0, "last_sync_at": "2026-10-24T08:14:47Z"}],
-    "peers": [{"id": "phone", "name": "phone", "connected": true, "expected_offline": true}]
+ "schema": 1,
+ "instance_id": "0123456789abcdef0123456789abcdef",
+ "name": "Hisho",
+ "version": "0.2.0",
+ "dashboard_url": "https://kihon.example.ts.net",
+ "generated_at": "2026-10-24T08:30:27.660150+00:00",
+ "core_host": "kihon",
+ "counts": {
+  "machines": 4,
+  "reachable": 3,
+  "unreachable": 1,
+  "asleep": 1,
+  "away": 0,
+  "maintenance": 0,
+  "faulted": 0
+ },
+ "machines": [
+  {
+   "id": "kihon",
+   "name": "Kihon",
+   "role": "Kihon (Hisho Core + dashboard + agent)",
+   "online": true,
+   "state": "up",
+   "reason": null,
+   "os": "Ubuntu 26.04.1 LTS",
+   "kernel": "7.0.0-38-generic",
+   "agent_version": "0.1.0",
+   "memory_percent": 17.8,
+   "disk_percent": 12.1,
+   "gpu_name": null,
+   "gpu_percent": null,
+   "jobs_running": 0,
+   "jobs_queued": 0,
+   "booted_at": "2026-10-20T10:34:00+00:00",
+   "heartbeat_age_seconds": 6.5,
+   "containers_running": 10,
+   "safe_to_shut_down": false,
+   "sync_connected": null,
+   "is_core": true,
+   "services": [
+    {
+     "id": "hisho-core",
+     "name": "hisho-core",
+     "unit": "hisho-fluent.service",
+     "running": true,
+     "state": "active"
+    },
+    {
+     "id": "hisho-yepiz-backup",
+     "name": "hisho-yepiz-backup",
+     "unit": "hisho-yepiz-backup.service",
+     "running": false,
+     "state": "failed"
+    }
+   ]
   },
-  "compute_workers": [{"id": "hashira-ren", "state": "running"}]
+  {
+   "id": "souko",
+   "name": "Souko",
+   "role": "Souko workstation + agent",
+   "online": true,
+   "state": "up",
+   "reason": null,
+   "os": "Souko (built on Omarchy 4.0.6)",
+   "kernel": "7.2.8-9-omarchy",
+   "agent_version": "0.1.0",
+   "memory_percent": 11.9,
+   "disk_percent": 3.8,
+   "gpu_name": "NVIDIA GeForce RTX 5090",
+   "gpu_percent": 6.0,
+   "jobs_running": 1,
+   "jobs_queued": 2,
+   "booted_at": "2026-10-24T07:28:00+00:00",
+   "heartbeat_age_seconds": 3.9,
+   "containers_running": 1,
+   "safe_to_shut_down": true,
+   "sync_connected": true,
+   "is_core": false,
+   "services": []
+  },
+  {
+   "id": "hashira-ten",
+   "name": "Hashira Ten",
+   "role": null,
+   "online": false,
+   "state": "asleep",
+   "reason": "ssh: connect to host port 22: Connection timed out",
+   "os": null,
+   "kernel": null,
+   "agent_version": null,
+   "memory_percent": null,
+   "disk_percent": null,
+   "gpu_name": null,
+   "gpu_percent": null,
+   "jobs_running": null,
+   "jobs_queued": null,
+   "booted_at": null,
+   "heartbeat_age_seconds": 219944.4,
+   "containers_running": null,
+   "safe_to_shut_down": null,
+   "sync_connected": false,
+   "is_core": false,
+   "services": []
+  },
+  {
+   "id": "hashira-ren",
+   "name": "Hashira Ren",
+   "role": "hashira-gpu",
+   "online": true,
+   "state": "up",
+   "reason": null,
+   "os": "Ubuntu 26.04.1 LTS",
+   "kernel": "7.0.0-38-generic",
+   "agent_version": "0.1.0",
+   "memory_percent": 2.0,
+   "disk_percent": 30.4,
+   "gpu_name": "Tesla P40",
+   "gpu_percent": 0.0,
+   "jobs_running": 0,
+   "jobs_queued": 0,
+   "booted_at": "2026-10-24T07:41:00+00:00",
+   "heartbeat_age_seconds": 6.5,
+   "containers_running": 0,
+   "safe_to_shut_down": true,
+   "sync_connected": true,
+   "is_core": false,
+   "services": []
+  }
+ ],
+ "sync": {
+  "available": true,
+  "severity": "info",
+  "problem": false,
+  "problems": [],
+  "conflicts": 0,
+  "folders": [
+   {
+    "id": "hisho-vault",
+    "name": "Hisho vault",
+    "status": "ok",
+    "verdict": "in sync",
+    "out_of_sync_files": 0,
+    "last_sync_at": "2026-10-24T08:14:47Z"
+   }
+  ],
+  "peers": [
+   {
+    "id": "phone",
+    "name": "phone",
+    "connected": true,
+    "expected_offline": true
+   }
+  ]
+ },
+ "compute_workers": [
+  {
+   "id": "hashira-ren",
+   "state": "running"
+  }
+ ],
+ "controls": {
+  "kihon": {
+   "units": [
+    {
+     "unit": "hisho-agent.service",
+     "label": "Hisho agent",
+     "state": "active",
+     "actions": [
+      "start",
+      "stop",
+      "restart"
+     ]
+    }
+   ],
+   "power": [],
+   "awake": null,
+   "deep_sleep": null,
+   "items": []
+  },
+  "souko": {
+   "units": [
+    {
+     "unit": "ollama.service",
+     "label": "Ollama",
+     "state": "inactive",
+     "actions": [
+      "start",
+      "stop",
+      "restart"
+     ]
+    }
+   ],
+   "power": [],
+   "awake": null,
+   "deep_sleep": null,
+   "items": [
+    {
+     "addon": "prometheus",
+     "entry": "souko",
+     "id": "exporter",
+     "name": "node_exporter",
+     "state": "up",
+     "facts": [
+      "100.76.64.47:9100"
+     ],
+     "actions": [
+      {
+       "id": "install",
+       "label": "Reinstall",
+       "danger": true
+      },
+      {
+       "id": "check",
+       "label": "Check",
+       "danger": false
+      }
+     ]
+    }
+   ]
+  },
+  "hashira-ten": {
+   "units": [],
+   "power": [
+    "park",
+    "wake"
+   ],
+   "awake": {
+    "state": "deep sleep",
+    "summary": "Parked — Proxmox1 asleep for 1 h",
+    "short": "deep sleep",
+    "parks_at": null
+   },
+   "deep_sleep": {
+    "host": "proxmox1",
+    "since": "2026-10-25T22:08:35+00:00"
+   },
+   "items": []
+  },
+  "hashira-ren": {
+   "units": [],
+   "power": [
+    "park",
+    "wake"
+   ],
+   "awake": {
+    "state": "awake",
+    "summary": "Awake: just woken — parks in ~16 min",
+    "short": "parks in 16m",
+    "parks_at": "2026-10-25T23:29:08+00:00"
+   },
+   "deep_sleep": null,
+   "items": []
+  }
+ },
+ "alerts": [
+  {
+   "id": "d2eb836753a0",
+   "severity": "critical",
+   "title": "TrueNAS: pool Potter is unhealthy",
+   "detail": "Pool Potter is online but ZFS reports errors on it.",
+   "source": "addons",
+   "machine": "addon:truenas",
+   "muted": null,
+   "off": false,
+   "pair": null,
+   "investigation": {
+    "status": "done",
+    "cause": "Disk sdh itself, or its cable or slot.",
+    "finished": "2026-10-21T00:43:03+00:00"
+   }
+  },
+  {
+   "id": "7cfe27652174",
+   "severity": "warn",
+   "title": "IONOS: 21 updates pending",
+   "detail": "Reboot needed.",
+   "source": "addons",
+   "machine": "addon:server",
+   "muted": {
+    "state": "ack",
+    "at": "2026-10-25T10:00:00+00:00"
+   },
+   "off": false,
+   "pair": null,
+   "investigation": null
+  },
+  {
+   "id": "a1b2c3d4e5f6",
+   "severity": "decision",
+   "title": "Home Assistant asks to connect to Hisho (code K7Q-4ZP)",
+   "detail": "",
+   "source": "home-assistant",
+   "machine": null,
+   "muted": null,
+   "off": false,
+   "pair": {
+    "ref": "abc",
+    "code": "K7Q-4ZP"
+   },
+   "investigation": null
+  }
+ ],
+ "devices": [
+  {
+   "id": "truenas",
+   "name": "truenas",
+   "kind": "storage",
+   "state": "on",
+   "health": "problem",
+   "summary": "Pool Potter, Disks (21) not ok",
+   "addons": [
+    "proxmox",
+    "truenas"
+   ],
+   "items": [
+    {
+     "addon": "truenas",
+     "entry": "truenas",
+     "id": "pool-Potter",
+     "name": "Pool Potter",
+     "state": "warn",
+     "facts": [
+      "ONLINE",
+      "130.4 TiB used of 196.4 TiB"
+     ],
+     "actions": []
+    },
+    {
+     "addon": "proxmox",
+     "entry": "PVE",
+     "id": "521",
+     "name": "TruenasCE",
+     "state": "up",
+     "facts": [
+      "VM 521 on pve"
+     ],
+     "actions": [
+      {
+       "id": "shutdown",
+       "label": "shut down",
+       "danger": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ionos",
+   "name": "ionos",
+   "kind": "server",
+   "state": "on",
+   "health": "warn",
+   "summary": "Updates: 21 pending",
+   "addons": [
+    "server"
+   ],
+   "items": [
+    {
+     "addon": "server",
+     "entry": "ionos",
+     "id": "updates",
+     "name": "Updates: 21 pending",
+     "state": "warn",
+     "facts": [
+      "apparmor 4.0.1"
+     ],
+     "actions": []
+    }
+   ]
+  },
+  {
+   "id": "hashira-ren",
+   "name": "hashira-ren",
+   "kind": "vm",
+   "state": "on",
+   "health": "ok",
+   "summary": "",
+   "addons": [
+    "proxmox"
+   ],
+   "items": []
+  }
+ ],
+ "addons": [
+  {
+   "name": "web-factory",
+   "title": "Web Factory",
+   "kind": "integration",
+   "version": "0.6.0",
+   "enabled": true,
+   "host": "kihon",
+   "problems": [],
+   "state": "ok",
+   "actions": [
+    {
+     "id": "deploy-dev",
+     "label": "Deploy dev now",
+     "danger": false
+    },
+    {
+     "id": "prune",
+     "label": "Prune old previews",
+     "danger": true
+    }
+   ]
+  },
+  {
+   "name": "email",
+   "title": "Email",
+   "kind": "service",
+   "version": "0.1.4",
+   "enabled": true,
+   "host": "kihon",
+   "problems": [
+    "password missing"
+   ],
+   "state": null,
+   "actions": []
+  }
+ ],
+ "jobs": [
+  {
+   "id": "job-1",
+   "kind": "transcribe",
+   "status": "running",
+   "worker": "souko",
+   "updated_at": "2026-10-25T22:00:00+00:00",
+   "reason": "",
+   "stuck": null
+  },
+  {
+   "id": "job-2",
+   "kind": "transcribe",
+   "status": "failed",
+   "worker": "souko",
+   "updated_at": "2026-10-25T21:00:00+00:00",
+   "reason": "no input",
+   "stuck": null
+  }
+ ],
+ "projects": [
+  {
+   "name": "Security follow-ups",
+   "title": "Security follow-ups",
+   "company": null,
+   "status": "active",
+   "waiting_on": "jonathan",
+   "next": null,
+   "asks": [
+    "Rotate the password"
+   ]
+  },
+  {
+   "name": "Hisho/Addons/AMP",
+   "title": "AMP",
+   "company": "Hisho",
+   "status": "active",
+   "waiting_on": null,
+   "next": "x",
+   "asks": []
+  }
+ ],
+ "maintenance": {
+  "fleet": null,
+  "machines": {
+   "proxmox1": {
+    "reason": "deep sleep",
+    "since": "2026-10-25T22:08:35+00:00",
+    "until": null,
+    "by": "hisho idle-sweep",
+    "off": true
+   },
+   "ionos": {
+    "reason": "updates",
+    "since": "2026-10-25T20:00:00+00:00",
+    "until": null,
+    "by": "dashboard",
+    "off": false
+   }
+  }
+ },
+ "phone": {
+  "ok": true,
+  "devices": [
+   "phone"
+  ],
+  "channel": "all"
+ },
+ "allowed": [
+  "addon.apply",
+  "addon.config",
+  "addon.disable",
+  "addon.enable",
+  "addon.entry",
+  "addon.run",
+  "addon.test",
+  "alert.ack",
+  "alert.investigate",
+  "alert.notify",
+  "alert.snooze",
+  "alert.unack",
+  "alerts.hide_acked",
+  "device.press",
+  "github.apply",
+  "idea.add",
+  "job.cancel",
+  "job.clear",
+  "job.create",
+  "job.dispatch",
+  "job.resume",
+  "job.retry",
+  "jobs.reap",
+  "machine.park",
+  "machine.wake",
+  "maintenance.off",
+  "maintenance.on",
+  "notify.channels",
+  "notify.send",
+  "project.archive",
+  "project.delete",
+  "project.open",
+  "project.restore",
+  "push.clear",
+  "repository.add",
+  "repository.remove",
+  "repository.update",
+  "store.install",
+  "store.remove",
+  "store.rollback",
+  "store.update",
+  "unit.restart",
+  "unit.start",
+  "unit.stop"
+ ]
 }

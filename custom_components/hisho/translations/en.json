@@ -3,39 +3,31 @@
     "step": {
       "user": {
         "title": "Connect to Hisho",
-        "description": "Hisho Core's address, as this Home Assistant reaches it (for example {example_url}), and the read-only token from `hisho home-assistant token`.",
+        "description": "Hisho Core's address, as this Home Assistant reaches it (for example {example_url}). Submit, then approve the request in Hisho: it shows in Needs you and on your phone.",
         "data": {
           "url": "URL",
-          "token": "API token",
-          "verify_ssl": "Verify SSL certificate"
+          "verify_ssl": "Verify SSL certificate",
+          "token": "Token (only one made with the command line)"
         },
         "data_description": {
           "url": "Where Hisho Core answers. Over Tailscale, its https ts.net name.",
-          "token": "Made on the Core machine with `hisho home-assistant token`. It can read Hisho's state and nothing else.",
-          "verify_ssl": "Turn off only for a Core with a self-signed certificate."
+          "verify_ssl": "Turn off only for a Core with a self-signed certificate.",
+          "token": "Leave empty: Hisho gives this Home Assistant its own token when you approve it. Only for a read-only token from `hisho home-assistant token`."
         }
       },
       "reauth_confirm": {
-        "title": "Hisho needs a new token",
-        "description": "Hisho at {url} no longer accepts the saved token (it was rotated). Make a new one on the Core machine with `hisho home-assistant token --rotate` and paste it here.",
-        "data": {
-          "token": "API token"
-        },
-        "data_description": {
-          "token": "The token `hisho home-assistant token --rotate` showed."
-        }
+        "title": "Approve Home Assistant in Hisho again",
+        "description": "Hisho at {url} no longer accepts this Home Assistant (it was revoked, or Hisho was reset). Submit to ask again, then approve it in Hisho."
       },
       "reconfigure": {
-        "title": "Change the Hisho connection",
-        "description": "Use this when Hisho Core moves to another address, or with a new token.",
+        "title": "Hisho moved",
+        "description": "Hisho Core's new address (for example {example_url}). Submit, then approve the request in Hisho.",
         "data": {
           "url": "URL",
-          "token": "API token",
           "verify_ssl": "Verify SSL certificate"
         },
         "data_description": {
           "url": "Where Hisho Core answers now.",
-          "token": "The read-only token from `hisho home-assistant token`.",
           "verify_ssl": "Turn off only for a Core with a self-signed certificate."
         }
       }
@@ -43,15 +35,21 @@
     "error": {
       "cannot_connect": "Could not reach Hisho: {error}",
       "invalid_auth": "Hisho refused the token. Make one with `hisho home-assistant token` on the Core machine.",
-      "not_hisho": "Something answered at that address, but not Hisho Core (or a Hisho too old to have the Home Assistant route).",
+      "not_hisho": "Something answered at that address, but not Hisho Core (or a Hisho too old for Home Assistant pairing).",
       "unsupported_schema": "This Hisho sends data version {schema}, newer than this integration understands. Update the integration in HACS.",
-      "unknown": "Unexpected error"
+      "unknown": "Unexpected error",
+      "pair_busy": "Hisho is not taking a new request right now: {error}"
     },
     "abort": {
       "already_configured": "Service is already configured",
       "reauth_successful": "Re-authentication was successful",
       "reconfigure_successful": "Re-configuration was successful",
-      "wrong_hisho": "That address is a different Hisho than the one this entry belongs to. Add it as a new integration instead."
+      "wrong_hisho": "That address is a different Hisho than the one this entry belongs to. Add it as a new integration instead.",
+      "pair_denied": "The request was denied in Hisho.",
+      "pair_expired": "Nobody approved the request in time. Add the integration again and approve it in Hisho within ten minutes."
+    },
+    "progress": {
+      "wait_for_approval": "In Hisho, open Needs you (or the notification on your phone) and approve **Home Assistant**. Approve only if Hisho shows the same code:\n\n## {code}\n\nThis page continues by itself once you approve."
     }
   },
   "entity": {
@@ -73,6 +71,12 @@
       },
       "service": {
         "name": "{service}"
+      },
+      "core_reachable": {
+        "name": "Core reachable"
+      },
+      "critical_alert": {
+        "name": "Critical alert"
       }
     },
     "sensor": {
@@ -143,6 +147,128 @@
           "blocked": "Blocked",
           "unknown": "Unknown"
         }
+      },
+      "needs_you_count": {
+        "name": "Needs you",
+        "unit_of_measurement": "items"
+      },
+      "jobs_active": {
+        "name": "Jobs active",
+        "unit_of_measurement": "jobs"
+      },
+      "jobs_failed": {
+        "name": "Jobs failed",
+        "unit_of_measurement": "jobs"
+      },
+      "projects_active": {
+        "name": "Projects active",
+        "unit_of_measurement": "projects"
+      },
+      "projects_waiting": {
+        "name": "Projects waiting on you",
+        "unit_of_measurement": "projects"
+      },
+      "actions_allowed": {
+        "name": "Actions allowed",
+        "unit_of_measurement": "actions"
+      },
+      "awake": {
+        "name": "Parking"
+      },
+      "box_state": {
+        "name": "Power",
+        "state": {
+          "on": "On",
+          "off": "Off",
+          "asleep": "Asleep",
+          "offline": "Offline",
+          "unknown": "Unknown"
+        }
+      },
+      "box_health": {
+        "name": "Health",
+        "state": {
+          "ok": "OK",
+          "warn": "Needs a look",
+          "problem": "Problem",
+          "unknown": "Unknown"
+        }
+      },
+      "box_item": {
+        "name": "{item}"
+      },
+      "addon_status": {
+        "name": "Status",
+        "state": {
+          "ok": "OK",
+          "warn": "Needs a look",
+          "down": "Problem",
+          "needs_setup": "Needs setup",
+          "off": "Off"
+        }
+      }
+    },
+    "button": {
+      "hide_acked": {
+        "name": "Hide acknowledged"
+      },
+      "clear_phone": {
+        "name": "Clear phone notifications"
+      },
+      "reap_jobs": {
+        "name": "Fail stuck jobs"
+      },
+      "wake": {
+        "name": "Wake"
+      },
+      "park": {
+        "name": "Park"
+      },
+      "restart_unit": {
+        "name": "Restart {unit}"
+      },
+      "item_action": {
+        "name": "{item}: {action}"
+      },
+      "addon_action": {
+        "name": "{action}"
+      }
+    },
+    "switch": {
+      "maintenance": {
+        "name": "Maintenance"
+      },
+      "fleet_maintenance": {
+        "name": "Fleet maintenance"
+      },
+      "unit": {
+        "name": "{unit}"
+      },
+      "addon_enabled": {
+        "name": "Enabled"
+      }
+    },
+    "todo": {
+      "needs_you": {
+        "name": "Needs you"
+      }
+    },
+    "event": {
+      "alert": {
+        "name": "Alert",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "opened": "Opened",
+              "resolved": "Resolved"
+            }
+          }
+        }
+      }
+    },
+    "notify": {
+      "phone": {
+        "name": "Phone app"
       }
     }
   },
@@ -155,6 +281,174 @@
     },
     "unsupported_schema": {
       "message": "Hisho sends data version {schema}, newer than this integration understands. Update the integration."
+    },
+    "action_not_allowed": {
+      "message": "Hisho does not let this Home Assistant {action}. The owner can allow it under Home Assistant on Hisho's Add-ons page. ({error})"
+    },
+    "action_needs_confirm": {
+      "message": "{action} needs a confirmation first: use a card that asks, or pass confirm: true."
+    },
+    "action_failed": {
+      "message": "Hisho could not {action}: {error}"
+    },
+    "no_entry": {
+      "message": "No Hisho is set up and loaded."
+    },
+    "which_entry": {
+      "message": "More than one Hisho is set up: say which with config_entry_id."
+    },
+    "alert_gone": {
+      "message": "That item is no longer in Hisho's needs-you list (it resolved)."
+    }
+  },
+  "services": {
+    "run_action": {
+      "name": "Run a Hisho action",
+      "description": "Press any of Hisho's controls. The ones Hisho allows this Home Assistant are listed on the hub's \"Actions allowed\" sensor.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hisho",
+          "description": "Which Hisho, when more than one is set up."
+        },
+        "action": {
+          "name": "Action",
+          "description": "For example machine.wake, unit.restart, device.press."
+        },
+        "target": {
+          "name": "Target",
+          "description": "What it acts on: a machine, an alert id, an add-on name."
+        },
+        "args": {
+          "name": "Arguments",
+          "description": "Extra fields the action takes."
+        },
+        "confirm": {
+          "name": "Confirmed",
+          "description": "Required for actions that power something off or remove something: ask first."
+        }
+      }
+    },
+    "alert": {
+      "name": "Answer a needs-you item",
+      "description": "Acknowledge, un-acknowledge, snooze, re-notify or investigate one of Hisho's needs-you items.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hisho",
+          "description": "Which Hisho, when more than one is set up."
+        },
+        "alert_id": {
+          "name": "Alert",
+          "description": "The item's id (in the Needs you to-do list and the Alert event)."
+        },
+        "verb": {
+          "name": "What to do",
+          "description": "Acknowledge, un-acknowledge, snooze, send to the phone again, or have Claude investigate."
+        },
+        "hours": {
+          "name": "Hours",
+          "description": "How long to snooze."
+        }
+      }
+    },
+    "maintenance": {
+      "name": "Maintenance",
+      "description": "Start or end maintenance for the fleet, a machine, a box or an add-on (addon:NAME).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hisho",
+          "description": "Which Hisho, when more than one is set up."
+        },
+        "target": {
+          "name": "Target",
+          "description": "fleet, a machine, a box, or addon:NAME."
+        },
+        "mode": {
+          "name": "On or off",
+          "description": "Start or end it."
+        },
+        "reason": {
+          "name": "Reason",
+          "description": "Shown in Hisho."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "For example 2h; empty = until ended."
+        },
+        "keep_vms": {
+          "name": "Keep its VM running",
+          "description": "For one fleet machine: do not shut its VM down."
+        },
+        "park": {
+          "name": "Park",
+          "description": "Also power off what can be parked."
+        }
+      }
+    },
+    "job": {
+      "name": "Control a job",
+      "description": "Cancel, retry, clear, dispatch or resume one of Hisho's jobs.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hisho",
+          "description": "Which Hisho, when more than one is set up."
+        },
+        "job_id": {
+          "name": "Job",
+          "description": "The job's id."
+        },
+        "verb": {
+          "name": "What to do",
+          "description": "Cancel, retry, clear, dispatch or resume."
+        }
+      }
+    },
+    "create_job": {
+      "name": "Create a job",
+      "description": "Queue a new Hisho job (for example a transcription).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hisho",
+          "description": "Which Hisho, when more than one is set up."
+        },
+        "kind": {
+          "name": "Kind",
+          "description": "For example transcribe."
+        },
+        "worker": {
+          "name": "Worker",
+          "description": "A machine to run it on; empty = Hisho picks."
+        },
+        "meta": {
+          "name": "Details",
+          "description": "What the job needs."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alert_verb": {
+      "options": {
+        "ack": "Acknowledge",
+        "unack": "Un-acknowledge",
+        "snooze": "Snooze",
+        "notify": "Send to the phone again",
+        "investigate": "Investigate"
+      }
+    },
+    "maintenance_mode": {
+      "options": {
+        "on": "On",
+        "off": "Off"
+      }
+    },
+    "job_verb": {
+      "options": {
+        "cancel": "Cancel",
+        "retry": "Retry",
+        "clear": "Clear",
+        "dispatch": "Dispatch",
+        "resume": "Resume"
+      }
     }
   }
 }

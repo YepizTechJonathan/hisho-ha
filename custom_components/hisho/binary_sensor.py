@@ -73,7 +73,7 @@ async def async_setup_entry(
 ) -> None:
     """Add the hub's sync sensor, then machines, services and peers as they appear."""
     coordinator = entry.runtime_data
-    async_add_entities([HishoSyncProblem(coordinator)])
+    async_add_entities([HishoSyncProblem(coordinator), HishoCoreReachable(coordinator), HishoCritical(coordinator)])
     known: set[str] = set()
 
     @callback
@@ -213,3 +213,51 @@ class HishoServiceSensor(HishoMachineEntity, BinarySensorEntity):
         """The systemd unit and its state."""
         service = self._service or {}
         return {"unit": service.get("unit"), "state": service.get("state")}
+
+
+class HishoCoreReachable(HishoEntity, BinarySensorEntity):
+    """Whether Hisho Core answers. Stays available when it does not: that is the point
+    (the "Hisho Core down" blueprint triggers on it)."""
+
+    _attr_translation_key = "core_reachable"
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+
+    def __init__(self, coordinator: HishoCoordinator) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, "core_reachable")
+
+    @property
+    def available(self) -> bool:
+        """Always: it reports the outage instead of joining it."""
+        return True
+
+    @property
+    def is_on(self) -> bool:
+        """The last poll worked."""
+        return self.coordinator.last_update_success
+
+
+class HishoCritical(HishoEntity, BinarySensorEntity):
+    """On while a critical needs-you item is open and not acknowledged."""
+
+    _attr_translation_key = "critical_alert"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(self, coordinator: HishoCoordinator) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, "critical_alert")
+
+    def _open(self) -> list[dict[str, Any]]:
+        return [a for a in self.coordinator.data.alerts.values()
+                if a.get("severity") == "critical" and not a.get("muted") and not a.get("off")]
+
+    @property
+    def is_on(self) -> bool:
+        """Something critical needs the owner."""
+        return bool(self._open())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Which."""
+        return {"alerts": [a.get("title") for a in self._open()]}
+

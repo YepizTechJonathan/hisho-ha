@@ -1,17 +1,56 @@
 {
   "entity": {
     "binary_sensor": {
-      "online": { "default": "mdi:server-network", "state": { "off": "mdi:server-network-off" } },
-      "sync_connected": { "default": "mdi:sync", "state": { "off": "mdi:sync-off" } },
-      "safe_to_shut_down": { "default": "mdi:power", "state": { "off": "mdi:power-off" } },
-      "sync_problem": { "default": "mdi:sync-alert" },
-      "sync_peer": { "default": "mdi:cellphone-link", "state": { "off": "mdi:cellphone-link-off" } },
-      "service": { "default": "mdi:cog" }
+      "online": {
+        "default": "mdi:server-network",
+        "state": {
+          "off": "mdi:server-network-off"
+        }
+      },
+      "sync_connected": {
+        "default": "mdi:sync",
+        "state": {
+          "off": "mdi:sync-off"
+        }
+      },
+      "safe_to_shut_down": {
+        "default": "mdi:power",
+        "state": {
+          "off": "mdi:power-off"
+        }
+      },
+      "sync_problem": {
+        "default": "mdi:sync-alert"
+      },
+      "sync_peer": {
+        "default": "mdi:cellphone-link",
+        "state": {
+          "off": "mdi:cellphone-link-off"
+        }
+      },
+      "service": {
+        "default": "mdi:cog"
+      },
+      "core_reachable": {
+        "default": "mdi:lan-connect",
+        "state": {
+          "off": "mdi:lan-disconnect"
+        }
+      },
+      "critical_alert": {
+        "default": "mdi:alert-octagon"
+      }
     },
     "sensor": {
-      "machines_online": { "default": "mdi:server" },
-      "machines_faulted": { "default": "mdi:server-remove" },
-      "sync_conflicts": { "default": "mdi:file-document-alert" },
+      "machines_online": {
+        "default": "mdi:server"
+      },
+      "machines_faulted": {
+        "default": "mdi:server-remove"
+      },
+      "sync_conflicts": {
+        "default": "mdi:file-document-alert"
+      },
       "machine_state": {
         "default": "mdi:server",
         "state": {
@@ -22,16 +61,161 @@
           "faulted": "mdi:alert-circle"
         }
       },
-      "memory_usage": { "default": "mdi:memory" },
-      "disk_usage": { "default": "mdi:harddisk" },
-      "gpu_usage": { "default": "mdi:expansion-card" },
-      "jobs_running": { "default": "mdi:play-box-multiple" },
-      "jobs_queued": { "default": "mdi:tray-full" },
-      "last_boot": { "default": "mdi:restart" },
-      "containers_running": { "default": "mdi:docker" },
-      "heartbeat_age": { "default": "mdi:heart-pulse" },
-      "sync_folder": { "default": "mdi:folder-sync" },
-      "compute_worker": { "default": "mdi:chip" }
+      "memory_usage": {
+        "default": "mdi:memory"
+      },
+      "disk_usage": {
+        "default": "mdi:harddisk"
+      },
+      "gpu_usage": {
+        "default": "mdi:expansion-card"
+      },
+      "jobs_running": {
+        "default": "mdi:play-box-multiple"
+      },
+      "jobs_queued": {
+        "default": "mdi:tray-full"
+      },
+      "last_boot": {
+        "default": "mdi:restart"
+      },
+      "containers_running": {
+        "default": "mdi:docker"
+      },
+      "heartbeat_age": {
+        "default": "mdi:heart-pulse"
+      },
+      "sync_folder": {
+        "default": "mdi:folder-sync"
+      },
+      "compute_worker": {
+        "default": "mdi:chip"
+      },
+      "needs_you_count": {
+        "default": "mdi:bell-alert"
+      },
+      "jobs_active": {
+        "default": "mdi:progress-clock"
+      },
+      "jobs_failed": {
+        "default": "mdi:alert-circle-outline"
+      },
+      "projects_active": {
+        "default": "mdi:folder-multiple"
+      },
+      "projects_waiting": {
+        "default": "mdi:account-clock"
+      },
+      "actions_allowed": {
+        "default": "mdi:shield-key"
+      },
+      "awake": {
+        "default": "mdi:power-sleep"
+      },
+      "box_state": {
+        "default": "mdi:power",
+        "state": {
+          "off": "mdi:power-off",
+          "asleep": "mdi:sleep",
+          "offline": "mdi:lan-disconnect"
+        }
+      },
+      "box_health": {
+        "default": "mdi:heart-pulse",
+        "state": {
+          "warn": "mdi:alert",
+          "problem": "mdi:alert-circle"
+        }
+      },
+      "box_item": {
+        "default": "mdi:checkbox-blank-circle-outline"
+      },
+      "addon_status": {
+        "default": "mdi:puzzle",
+        "state": {
+          "off": "mdi:puzzle-remove",
+          "down": "mdi:puzzle-remove-outline",
+          "needs_setup": "mdi:puzzle-edit"
+        }
+      }
+    },
+    "button": {
+      "hide_acked": {
+        "default": "mdi:eye-off"
+      },
+      "clear_phone": {
+        "default": "mdi:cellphone-remove"
+      },
+      "reap_jobs": {
+        "default": "mdi:broom"
+      },
+      "wake": {
+        "default": "mdi:power"
+      },
+      "park": {
+        "default": "mdi:power-sleep"
+      },
+      "restart_unit": {
+        "default": "mdi:restart"
+      },
+      "item_action": {
+        "default": "mdi:gesture-tap-button"
+      },
+      "addon_action": {
+        "default": "mdi:play"
+      }
+    },
+    "switch": {
+      "maintenance": {
+        "default": "mdi:wrench",
+        "state": {
+          "off": "mdi:wrench-outline"
+        }
+      },
+      "fleet_maintenance": {
+        "default": "mdi:wrench-cog"
+      },
+      "unit": {
+        "default": "mdi:cog",
+        "state": {
+          "off": "mdi:cog-off"
+        }
+      },
+      "addon_enabled": {
+        "default": "mdi:puzzle-check"
+      }
+    },
+    "todo": {
+      "needs_you": {
+        "default": "mdi:bell-alert"
+      }
+    },
+    "event": {
+      "alert": {
+        "default": "mdi:bell-ring"
+      }
+    },
+    "notify": {
+      "phone": {
+        "default": "mdi:cellphone-message"
+      }
+    }
+  },
+  "services": {
+    "run_action": {
+      "service": "mdi:gesture-tap"
+    },
+    "alert": {
+      "service": "mdi:bell-check"
+    },
+    "maintenance": {
+      "service": "mdi:wrench"
+    },
+    "job": {
+      "service": "mdi:progress-wrench"
+    },
+    "create_job": {
+      "service": "mdi:plus-box"
     }
   }
 }

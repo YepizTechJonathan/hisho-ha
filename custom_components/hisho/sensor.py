@@ -19,11 +19,17 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 
-from .const import FOLDER_STATES, MACHINE_STATES, WORKER_STATES
+from .const import DEVICE_STATES, FOLDER_STATES, HEALTH_STATES, MACHINE_STATES, WORKER_STATES
 from .coordinator import HishoConfigEntry, HishoCoordinator, HishoData
-from .entity import HishoEntity, HishoMachineEntity
+from .entity import HishoAddonEntity, HishoBoxEntity, HishoEntity, HishoMachineEntity
 
 PARALLEL_UPDATES = 0  # the coordinator does all the fetching
+
+
+def _waiting_on_owner(project: dict[str, Any]) -> bool:
+    """Waiting on a person (not on Claude or Hisho), or active with open asks."""
+    waiting = str(project.get("waiting_on") or "").lower()
+    return (waiting not in ("", "claude", "hisho")) or bool(project.get("asks") and project.get("status") == "active")
 
 
 def _timestamp(value: Any) -> datetime | None:
@@ -60,6 +66,44 @@ HUB_SENSORS: tuple[HishoHubSensorDescription, ...] = (
         translation_key="machines_faulted",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda d: (d.raw.get("counts") or {}).get("faulted"),
+    ),
+    HishoHubSensorDescription(
+        key="needs_you",
+        translation_key="needs_you_count",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: sum(1 for a in d.alerts.values() if not a.get("muted") and not a.get("off")),
+    ),
+    HishoHubSensorDescription(
+        key="jobs_active",
+        translation_key="jobs_active",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: sum(1 for j in d.raw.get("jobs") or [] if j.get("status") in ("queued", "routed", "running")),
+    ),
+    HishoHubSensorDescription(
+        key="jobs_failed",
+        translation_key="jobs_failed",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: sum(1 for j in d.raw.get("jobs") or [] if j.get("status") == "failed"),
+    ),
+    HishoHubSensorDescription(
+        key="projects_active",
+        translation_key="projects_active",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: sum(1 for p in d.raw.get("projects") or [] if p.get("status") == "active")
+        if "projects" in d.raw else None,
+    ),
+    HishoHubSensorDescription(
+        key="projects_waiting",
+        translation_key="projects_waiting",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: sum(1 for p in d.raw.get("projects") or [] if _waiting_on_owner(p))
+        if "projects" in d.raw else None,
+    ),
+    HishoHubSensorDescription(
+        key="actions_allowed",
+        translation_key="actions_allowed",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: len(d.allowed),
     ),
     HishoHubSensorDescription(
         key="sync_conflicts",
@@ -185,6 +229,23 @@ async def async_setup_entry(
             if (key := f"worker:{worker_id}") not in known:
                 known.add(key)
                 new.append(HishoWorkerSensor(coordinator, worker_id))
+        for machine_id in data.machines:
+            if (data.controls.get(machine_id) or {}).get("power") and (key := f"awake:{machine_id}") not in known:
+                known.add(key)
+                new.append(HishoAwakeSensor(coordinator, machine_id))
+        for device_id, box in data.devices.items():
+            for kind in ("state", "health"):
+                if (key := f"box:{device_id}:{kind}") not in known:
+                    known.add(key)
+                    new.append(HishoBoxSensor(coordinator, device_id, kind))
+            for item in box.get("items") or []:
+                if (key := f"box:{device_id}:item:{item['addon']}:{item['entry']}:{item['id']}") not in known:
+                    known.add(key)
+                    new.append(HishoBoxItemSensor(coordinator, device_id, item))
+        for name in data.addons:
+            if (key := f"addon:{name}") not in known:
+                known.add(key)
+                new.append(HishoAddonStatus(coordinator, name))
         if new:
             async_add_entities(new)
 
@@ -211,6 +272,22 @@ class HishoHubSensor(HishoEntity, SensorEntity):
     def native_value(self) -> StateType:
         """The reading."""
         return self.entity_description.value_fn(self.coordinator.data)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """For the counts that list things: which."""
+        data = self.coordinator.data
+        key = self.entity_description.key
+        if key == "actions_allowed":
+            return {"allowed": sorted(data.allowed)}
+        if key == "needs_you":
+            return {"alerts": [{k: a.get(k) for k in ("id", "severity", "title")}
+                               for a in data.alerts.values() if not a.get("muted") and not a.get("off")]}
+        if key == "projects_waiting":
+            return {"projects": [{"name": p.get("title") or p.get("name"), "asks": p.get("asks")}
+                                 for p in data.raw.get("projects") or []
+                                 if _waiting_on_owner(p)]}
+        return None
 
 
 class HishoMachineSensor(HishoMachineEntity, SensorEntity):
@@ -295,3 +372,120 @@ class HishoWorkerSensor(HishoEntity, SensorEntity):
         """running, blocked or unknown."""
         state = (self.coordinator.data.workers.get(self.worker_id) or {}).get("state")
         return state if state in WORKER_STATES else "unknown"
+
+
+class HishoAwakeSensor(HishoMachineEntity, SensorEntity):
+    """Why a reserve machine is up and when it parks (Hisho's "awake" line)."""
+
+    _attr_translation_key = "awake"
+
+    def __init__(self, coordinator: HishoCoordinator, machine_id: str) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, machine_id, "awake")
+
+    def _awake(self) -> dict[str, Any]:
+        return (self.coordinator.data.controls.get(self.machine_id) or {}).get("awake") or {}
+
+    @property
+    def native_value(self) -> str | None:
+        """Short: "parks in 16m", "deep sleep"."""
+        return self._awake().get("short")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """The full sentence and when it parks."""
+        awake = self._awake()
+        return {"summary": awake.get("summary"), "parks_at": awake.get("parks_at"),
+                "server_asleep_since": ((self.coordinator.data.controls.get(self.machine_id) or {})
+                                        .get("deep_sleep") or {}).get("since")}
+
+
+class HishoBoxSensor(HishoBoxEntity, SensorEntity):
+    """A box's power state or health, as the add-ons see it."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+
+    def __init__(self, coordinator: HishoCoordinator, device_id: str, kind: str) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, device_id, kind)
+        self._kind = kind
+        self._attr_translation_key = f"box_{kind}"
+        self._attr_options = DEVICE_STATES if kind == "state" else HEALTH_STATES
+
+    @property
+    def native_value(self) -> str | None:
+        """on / off / asleep / offline, or ok / warn / problem."""
+        value = (self.box or {}).get(self._kind)
+        return value if value in self._attr_options else "unknown"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """The add-ons' one-line summary and which add-ons see it."""
+        if self._kind != "health":
+            return {}
+        box = self.box or {}
+        return {"summary": box.get("summary"), "kind": box.get("kind"), "addons": box.get("addons")}
+
+
+class HishoBoxItemSensor(HishoBoxEntity, SensorEntity):
+    """One thing an add-on watches on a box (a pool, a VM, updates)."""
+
+    _attr_translation_key = "box_item"
+
+    def __init__(self, coordinator: HishoCoordinator, device_id: str, item: dict[str, Any]) -> None:
+        """Set up the sensor."""
+        key = f"item_{item['addon']}_{item['entry']}_{item['id']}"
+        super().__init__(coordinator, device_id, key)
+        self._ref = (item["addon"], item["entry"], item["id"])
+        self._attr_translation_placeholders = {"item": item.get("name") or item["id"]}
+
+    def _item(self) -> dict[str, Any] | None:
+        return next((i for i in (self.box or {}).get("items") or []
+                     if (i.get("addon"), i.get("entry"), i.get("id")) == self._ref), None)
+
+    @property
+    def available(self) -> bool:
+        """Unavailable once the add-on stops reporting it."""
+        return super().available and self._item() is not None
+
+    @property
+    def native_value(self) -> str | None:
+        """up / warn / down / off."""
+        return (self._item() or {}).get("state")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """What the add-on says about it."""
+        item = self._item() or {}
+        return {"facts": item.get("facts") or [], "addon": item.get("addon")}
+
+
+class HishoAddonStatus(HishoAddonEntity, SensorEntity):
+    """How an add-on is doing: ok, needs a look, problem, needs setup, off."""
+
+    _attr_translation_key = "addon_status"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["ok", "warn", "down", "needs_setup", "off"]
+
+    def __init__(self, coordinator: HishoCoordinator, name: str) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, name, "status")
+
+    @property
+    def native_value(self) -> str | None:
+        """Its state, as the dashboard's add-on card shows it."""
+        addon = self.addon or {}
+        if not addon.get("enabled"):
+            return "off"
+        if addon.get("problems"):
+            return "needs_setup"
+        state = addon.get("state")
+        return state if state in ("warn", "down") else "ok"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Problems, version, where it runs."""
+        addon = self.addon or {}
+        return {"problems": addon.get("problems") or [], "version": addon.get("version"),
+                "host": addon.get("host"), "kind": addon.get("kind")}
+
