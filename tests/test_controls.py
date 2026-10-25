@@ -272,3 +272,19 @@ async def test_services_need_a_loaded_hisho(hass: HomeAssistant, hisho: AiohttpC
     await hass.config_entries.async_unload(config_entry.entry_id)
     with pytest.raises(ServiceValidationError):
         await hass.services.async_call(DOMAIN, "run_action", {"action": "jobs.reap"}, blocking=True)
+
+
+async def test_network_gear_only_on_request(
+    hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry
+) -> None:
+    """Switches and cameras stay out unless the option is on (HA's UniFi integration shows them)."""
+    await setup_entry(hass, config_entry)
+    devices = dr.async_get(hass)
+    switch_id = (DOMAIN, f"{INSTANCE}_device_kidsroom-switch")
+    assert devices.async_get_device_by_identifier(switch_id, config_entry.entry_id) is None
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"show_network": True})
+    await hass.async_block_till_done()
+    assert config_entry.options == {"show_network": True}
+    assert devices.async_get_device_by_identifier(switch_id, config_entry.entry_id).name == "KidsRoom Switch"

@@ -21,7 +21,7 @@ from .api import (
     HishoError,
     HishoUnsupportedError,
 )
-from .const import DOMAIN, UPDATE_INTERVAL
+from .const import CONF_SHOW_NETWORK, DOMAIN, UPDATE_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,8 +44,9 @@ class HishoData:
     allowed: frozenset[str] = frozenset()
 
     @classmethod
-    def from_snapshot(cls, raw: dict[str, Any]) -> HishoData:
-        """Index a snapshot by id."""
+    def from_snapshot(cls, raw: dict[str, Any], show_network: bool = False) -> HishoData:
+        """Index a snapshot by id. Network gear (switches, cameras) only on request: HA's own
+        integrations for it (UniFi...) usually show it already."""
         sync = raw.get("sync") or {}
         machines = {m["id"]: m for m in raw.get("machines") or [] if m.get("id")}
         return cls(
@@ -56,7 +57,11 @@ class HishoData:
             workers={w["id"]: w for w in raw.get("compute_workers") or [] if w.get("id")},
             alerts={a["id"]: a for a in raw.get("alerts") or [] if a.get("id")},
             # A box that is a fleet machine is that machine's device, not a second one.
-            devices={d["id"]: d for d in raw.get("devices") or [] if d.get("id") and d["id"] not in machines},
+            devices={
+                d["id"]: d
+                for d in raw.get("devices") or []
+                if d.get("id") and d["id"] not in machines and (show_network or d.get("kind") != "network")
+            },
             addons={a["name"]: a for a in raw.get("addons") or [] if a.get("name")},
             controls=raw.get("controls") or {},
             allowed=frozenset(raw.get("allowed") or ()),
@@ -121,7 +126,7 @@ class HishoCoordinator(DataUpdateCoordinator[HishoData]):
                 translation_key="cannot_connect",
                 translation_placeholders={"error": str(err) or type(err).__name__},
             ) from err
-        data = HishoData.from_snapshot(raw)
+        data = HishoData.from_snapshot(raw, self.config_entry.options.get(CONF_SHOW_NETWORK, False))
         self._remove_departed(data)
         return data
 

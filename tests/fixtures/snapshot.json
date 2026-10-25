@@ -380,6 +380,18 @@
     "proxmox"
    ],
    "items": []
+  },
+  {
+   "id": "kidsroom-switch",
+   "name": "KidsRoom Switch",
+   "kind": "network",
+   "state": "offline",
+   "health": "problem",
+   "summary": "USW Flex Mini",
+   "addons": [
+    "unifi"
+   ],
+   "items": []
   }
  ],
  "addons": [

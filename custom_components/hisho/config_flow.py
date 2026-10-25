@@ -22,9 +22,12 @@ import voluptuous as vol
 from homeassistant.config_entries import (
     SOURCE_REAUTH,
     SOURCE_RECONFIGURE,
+    ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
+    OptionsFlowWithReload,
 )
+from homeassistant.core import callback
 from homeassistant.const import CONF_TOKEN, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.helpers import instance_id
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -43,7 +46,7 @@ from .api import (
     HishoPairingBusyError,
     HishoUnsupportedError,
 )
-from .const import DOMAIN, PAIR_TIMEOUT_SECONDS
+from .const import CONF_SHOW_NETWORK, DOMAIN, PAIR_TIMEOUT_SECONDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,6 +69,12 @@ class HishoConfigFlow(ConfigFlow, domain=DOMAIN):
     """Pair with a Hisho; re-pair (reauth), or point at its new address (reconfigure)."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> HishoOptionsFlow:
+        """What to show."""
+        return HishoOptionsFlow()
 
     def __init__(self) -> None:
         """Start empty."""
@@ -255,3 +264,23 @@ class HishoConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders=placeholders,
         )
+
+
+class HishoOptionsFlow(OptionsFlowWithReload):
+    """What to show from Hisho."""
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Network gear on or off."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_SHOW_NETWORK, default=self.config_entry.options.get(CONF_SHOW_NETWORK, False)
+                    ): bool
+                }
+            ),
+        )
+

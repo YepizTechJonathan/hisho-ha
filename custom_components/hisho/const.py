@@ -8,6 +8,8 @@ from typing import Final
 DOMAIN: Final = "hisho"
 MANUFACTURER: Final = "Hisho"
 
+CONF_SHOW_NETWORK: Final = "show_network"
+
 SNAPSHOT_PATH: Final = "/api/ha/snapshot"
 PAIR_PATH: Final = "/api/ha/pair"
 ACTION_PATH: Final = "/api/ha/action"

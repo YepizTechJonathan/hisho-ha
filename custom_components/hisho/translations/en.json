@@ -450,5 +450,18 @@
         "resume": "Resume"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "What to show from Hisho",
+        "data": {
+          "show_network": "Show network devices"
+        },
+        "data_description": {
+          "show_network": "Switches, access points and cameras Hisho's add-ons see (UniFi...). Off by default: Home Assistant's own integrations usually show them already."
+        }
+      }
+    }
   }
 }
