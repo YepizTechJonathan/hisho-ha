@@ -61,6 +61,8 @@ async def test_user_flow_errors_then_recovers(
     result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": error}
+    if error == "cannot_connect":
+        assert result["description_placeholders"]["error"]
 
     aioclient_mock.clear_requests()
     aioclient_mock.get(SNAPSHOT_URL, json=snapshot_data)

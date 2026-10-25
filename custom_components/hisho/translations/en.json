@@ -41,7 +41,7 @@
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect",
+      "cannot_connect": "Could not reach Hisho: {error}",
       "invalid_auth": "Hisho refused the token. Make one with `hisho home-assistant token` on the Core machine.",
       "not_hisho": "Something answered at that address, but not Hisho Core (or a Hisho too old to have the Home Assistant route).",
       "unsupported_schema": "This Hisho sends data version {schema}, newer than this integration understands. Update the integration in HACS.",

@@ -61,8 +61,11 @@ class HishoConfigFlow(ConfigFlow, domain=DOMAIN):
             return None, {"base": "not_hisho"}, {}
         except HishoUnsupportedError as err:
             return None, {"base": "unsupported_schema"}, {"schema": str(err.schema)}
-        except HishoConnectionError:
-            return None, {"base": "cannot_connect"}, {}
+        except HishoConnectionError as err:
+            # Say why on the form and in the log: "cannot resolve host" and "certificate
+            # does not match" need different fixes, and both read "failed to connect".
+            _LOGGER.warning("Cannot reach Hisho at %s: %s", url, err)
+            return None, {"base": "cannot_connect"}, {"error": str(err)}
         except Exception:
             _LOGGER.exception("Unexpected error talking to Hisho at %s", url)
             return None, {"base": "unknown"}, {}
