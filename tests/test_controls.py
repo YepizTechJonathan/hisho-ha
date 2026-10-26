@@ -230,6 +230,8 @@ async def test_hub_counts_and_core_reachable(
     assert hass.states.get(_eid(hass, "sensor", "jobs_active")).state == "1"
     assert hass.states.get(_eid(hass, "sensor", "jobs_failed")).state == "1"
     assert hass.states.get(_eid(hass, "sensor", "projects_waiting")).state == "1"
+    done = hass.states.get(_eid(hass, "sensor", "done_for_you"))
+    assert done.state == "2" and done.attributes["items"][1]["text"] == "Transcribed on Hashira Ren"
     assert hass.states.get(_eid(hass, "binary_sensor", "critical_alert")).state == STATE_ON
     assert hass.states.get(_eid(hass, "sensor", "hashira-ren_awake")).state == "parks in 16m"
     reachable = _eid(hass, "binary_sensor", "core_reachable")
