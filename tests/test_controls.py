@@ -332,3 +332,38 @@ async def test_only_admins_press_hisho_controls(
                                    context=Context(user_id=hass_admin_user.id))
     await hass.services.async_call(DOMAIN, "run_action", {"action": "jobs.reap"}, blocking=True)  # an automation
     assert [a["action"] for a in _actions(hisho)] == ["machine.wake", "jobs.reap"]
+
+
+async def test_today_list_adds_and_ticks(hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry) -> None:
+    """Today.md's tasks: add one, tick one; renaming stays in the note."""
+    await setup_entry(hass, config_entry)
+    entity_id = _eid(hass, "todo", "today")
+    assert hass.states.get(entity_id).state == "1"
+    items = (await hass.services.async_call(
+        "todo", "get_items", {"entity_id": entity_id}, blocking=True, return_response=True))[entity_id]["items"]
+    assert [i["summary"] for i in items] == ["Call the bank", "Renew the domain"]
+    await hass.services.async_call("todo", "add_item", {"entity_id": entity_id, "item": "Pay rent"}, blocking=True)
+    assert _actions(hisho)[-1] == {"action": "task.add", "target": "", "args": {"text": "Pay rent"}}
+    await hass.services.async_call(
+        "todo", "update_item", {"entity_id": entity_id, "item": "Call the bank", "status": "completed"}, blocking=True)
+    assert _actions(hisho)[-1] == {"action": "task.done", "target": "", "args": {"text": "Call the bank"}}
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            "todo", "update_item", {"entity_id": entity_id, "item": "Call the bank", "rename": "x"}, blocking=True)
+
+
+async def test_due_dates_calendar(hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry,
+                                  freezer: FrozenDateTimeFactory) -> None:
+    """Business due dates as all-day events; the next one is the calendar's state."""
+    freezer.move_to("2026-10-25 12:00:00")
+    await setup_entry(hass, config_entry)
+    entity_id = _eid(hass, "calendar", "due_dates")
+    state = hass.states.get(entity_id)
+    assert state.attributes["message"] == "YepizTech: Annual report"
+    assert state.attributes["start_time"].startswith("2026-11-15")
+    events = (await hass.services.async_call(
+        "calendar", "get_events",
+        {"entity_id": entity_id, "start_date_time": "2026-10-01 00:00:00", "end_date_time": "2027-02-01 00:00:00"},
+        blocking=True, return_response=True))[entity_id]["events"]
+    assert [e["summary"] for e in events] == ["YepizTech: Annual report", "PatriotPoint: Quarterly taxes"]
+    assert "Aim to start by 2026-11-01" in events[0]["description"]

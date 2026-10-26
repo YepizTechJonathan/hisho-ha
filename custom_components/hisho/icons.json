@@ -188,6 +188,9 @@
     "todo": {
       "needs_you": {
         "default": "mdi:bell-alert"
+      },
+      "today": {
+        "default": "mdi:clipboard-check-outline"
       }
     },
     "event": {
@@ -198,6 +201,11 @@
     "notify": {
       "phone": {
         "default": "mdi:cellphone-message"
+      }
+    },
+    "calendar": {
+      "due_dates": {
+        "default": "mdi:calendar-alert"
       }
     }
   },

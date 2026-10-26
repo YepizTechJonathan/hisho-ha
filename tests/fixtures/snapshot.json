@@ -541,8 +541,44 @@
   "store.remove",
   "store.rollback",
   "store.update",
+  "task.add",
+  "task.done",
+  "task.undone",
   "unit.restart",
   "unit.start",
   "unit.stop"
+ ],
+ "today": {
+  "tasks": [
+   {
+    "text": "Call the bank",
+    "done": false
+   },
+   {
+    "text": "Renew the domain",
+    "done": true
+   }
+  ],
+  "pressing": [
+   "TrueNAS: pool Potter"
+  ]
+ },
+ "due": [
+  {
+   "company": "YepizTech",
+   "what": "Annual report",
+   "date": "2026-11-15",
+   "days": 21,
+   "note": "Secretary of State",
+   "start": "2026-11-01"
+  },
+  {
+   "company": "PatriotPoint",
+   "what": "Quarterly taxes",
+   "date": "2027-01-15",
+   "days": 82,
+   "note": null,
+   "start": null
+  }
  ]
 }

@@ -1,6 +1,8 @@
-"""To-do list "Hisho needs you": Hisho's needs-you items; ticking one acknowledges it in Hisho."""
+"""To-do lists: "Needs you" (ticking acknowledges in Hisho) and "Today" (the tasks in Today.md)."""
 
 from __future__ import annotations
+
+import hashlib
 
 from homeassistant.components.todo import (
     TodoItem,
@@ -27,7 +29,11 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Add the needs-you list."""
-    async_add_entities([HishoNeedsYou(entry.runtime_data)])
+    coordinator = entry.runtime_data
+    entities: list[TodoListEntity] = [HishoNeedsYou(coordinator)]
+    if "today" in coordinator.data.raw:
+        entities.append(HishoToday(coordinator))
+    async_add_entities(entities)
 
 
 class HishoNeedsYou(HishoEntity, TodoListEntity):
@@ -77,3 +83,57 @@ class HishoNeedsYou(HishoEntity, TodoListEntity):
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="alert_gone")
         verb = "ack" if item.status == TodoItemStatus.COMPLETED else "unack"
         await self.coordinator.async_action(f"alert.{verb}", item.uid, context=self._context)
+
+
+def _task_uid(text: str) -> str:
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+
+
+class HishoToday(HishoEntity, TodoListEntity):
+    """The owner's Tasks in Today.md: add one, tick it (Hisho moves it to Done recently next morning)."""
+
+    _attr_translation_key = "today"
+
+    def __init__(self, coordinator: HishoCoordinator) -> None:
+        """Set up the list."""
+        super().__init__(coordinator, "today")
+
+    def _tasks(self) -> list[dict]:
+        return list((self.coordinator.data.raw.get("today") or {}).get("tasks") or [])
+
+    @property
+    def supported_features(self) -> TodoListEntityFeature:
+        """Add and tick need Hisho's operate scope."""
+        features = TodoListEntityFeature(0)
+        if self.coordinator.data.can("task.add"):
+            features |= TodoListEntityFeature.CREATE_TODO_ITEM
+        if self.coordinator.data.can("task.done"):
+            features |= TodoListEntityFeature.UPDATE_TODO_ITEM
+        return features
+
+    @property
+    def todo_items(self) -> list[TodoItem]:
+        """Open tasks first, as in the note."""
+        return [
+            TodoItem(
+                uid=_task_uid(t["text"]),
+                summary=t["text"],
+                status=TodoItemStatus.COMPLETED if t.get("done") else TodoItemStatus.NEEDS_ACTION,
+            )
+            for t in self._tasks()
+        ]
+
+    async def async_create_todo_item(self, item: TodoItem) -> None:
+        """A new task at the end of Tasks."""
+        await self.coordinator.async_action("task.add", "", {"text": item.summary or ""}, context=self._context)
+
+    async def async_update_todo_item(self, item: TodoItem) -> None:
+        """Ticked or unticked (renaming is done in the note itself)."""
+        task = next((t for t in self._tasks() if _task_uid(t["text"]) == item.uid), None)
+        if task is None:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="task_gone")
+        if item.summary and item.summary != task["text"]:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="task_rename")
+        verb = "done" if item.status == TodoItemStatus.COMPLETED else "undone"
+        await self.coordinator.async_action(f"task.{verb}", "", {"text": task["text"]}, context=self._context)
+

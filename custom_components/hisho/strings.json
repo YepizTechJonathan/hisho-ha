@@ -251,6 +251,9 @@
     "todo": {
       "needs_you": {
         "name": "Needs you"
+      },
+      "today": {
+        "name": "Today"
       }
     },
     "event": {
@@ -269,6 +272,11 @@
     "notify": {
       "phone": {
         "name": "Phone app"
+      }
+    },
+    "calendar": {
+      "due_dates": {
+        "name": "Due dates"
       }
     }
   },
@@ -299,6 +307,12 @@
     },
     "alert_gone": {
       "message": "That item is no longer in Hisho's needs-you list (it resolved)."
+    },
+    "task_gone": {
+      "message": "That task is no longer in Today.md (it moved to Done recently, or was edited)."
+    },
+    "task_rename": {
+      "message": "Rename a task in Today.md itself; here you can add and tick tasks."
     }
   },
   "services": {
