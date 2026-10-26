@@ -206,6 +206,10 @@
           "needs_setup": "Needs setup",
           "off": "Off"
         }
+      },
+      "addon_updates": {
+        "name": "Add-on updates",
+        "unit_of_measurement": "updates"
       }
     },
     "button": {
@@ -277,6 +281,22 @@
     "calendar": {
       "due_dates": {
         "name": "Due dates"
+      }
+    },
+    "update": {
+      "addon_update": {
+        "name": "Update"
+      }
+    },
+    "select": {
+      "phone_alerts": {
+        "name": "Phone alerts",
+        "state": {
+          "all": "Everything",
+          "problems": "Problems (not info)",
+          "important": "Critical and decisions only",
+          "off": "Nothing"
+        }
       }
     }
   },

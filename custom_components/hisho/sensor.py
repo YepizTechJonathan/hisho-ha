@@ -100,6 +100,12 @@ HUB_SENSORS: tuple[HishoHubSensorDescription, ...] = (
         if "projects" in d.raw else None,
     ),
     HishoHubSensorDescription(
+        key="addon_updates",
+        translation_key="addon_updates",
+        value_fn=lambda d: sum(1 for a in d.raw.get("store") or [] if a.get("installed") and a.get("update_available"))
+        if "store" in d.raw else None,
+    ),
+    HishoHubSensorDescription(
         key="actions_allowed",
         translation_key="actions_allowed",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -257,7 +263,7 @@ class HishoHubSensor(HishoEntity, SensorEntity):
     """A fleet-wide reading."""
 
     # Lists for cards: shown, not kept in history (they would fill the recorder).
-    _unrecorded_attributes = frozenset({"jobs", "projects", "alerts", "allowed"})
+    _unrecorded_attributes = frozenset({"jobs", "projects", "alerts", "allowed", "store", "repositories"})
 
     entity_description: HishoHubSensorDescription
 
@@ -289,6 +295,8 @@ class HishoHubSensor(HishoEntity, SensorEntity):
         if key in ("jobs_active", "jobs_failed"):
             return {"jobs": [{k: j.get(k) for k in ("id", "kind", "status", "worker", "updated_at", "reason")}
                              for j in data.raw.get("jobs") or []]} if key == "jobs_active" else None
+        if key == "addon_updates":
+            return {"store": data.raw.get("store") or [], "repositories": data.raw.get("repositories") or []}
         if key == "projects_active":
             return {"projects": [{k: p.get(k) for k in ("name", "title", "company", "status", "waiting_on", "next", "asks")}
                                  for p in data.raw.get("projects") or []]}
@@ -487,7 +495,7 @@ class HishoBoxItemSensor(HishoBoxEntity, SensorEntity):
 class HishoAddonStatus(HishoAddonEntity, SensorEntity):
     """How an add-on is doing: ok, needs a look, problem, needs setup, off."""
 
-    _unrecorded_attributes = frozenset({"actions", "problems"})
+    _unrecorded_attributes = frozenset({"actions", "problems", "settings"})
 
     _attr_translation_key = "addon_status"
     _attr_device_class = SensorDeviceClass.ENUM
@@ -514,5 +522,5 @@ class HishoAddonStatus(HishoAddonEntity, SensorEntity):
         addon = self.addon or {}
         return {"problems": addon.get("problems") or [], "version": addon.get("version"),
                 "host": addon.get("host"), "kind": addon.get("kind"), "addon": self.addon_name,
-                "actions": addon.get("actions") or []}
+                "actions": addon.get("actions") or [], "settings": addon.get("settings") or {}}
 

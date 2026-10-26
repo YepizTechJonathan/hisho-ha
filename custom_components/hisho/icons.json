@@ -137,6 +137,9 @@
           "down": "mdi:puzzle-remove-outline",
           "needs_setup": "mdi:puzzle-edit"
         }
+      },
+      "addon_updates": {
+        "default": "mdi:package-up"
       }
     },
     "button": {
@@ -206,6 +209,11 @@
     "calendar": {
       "due_dates": {
         "default": "mdi:calendar-alert"
+      }
+    },
+    "select": {
+      "phone_alerts": {
+        "default": "mdi:cellphone-message"
       }
     }
   },

@@ -415,7 +415,29 @@
      "label": "Prune old previews",
      "danger": true
     }
-   ]
+   ],
+   "settings": {
+    "schema": {
+     "sites_dir": "str",
+     "builder": "list(claude|codex)",
+     "worker_token": "password"
+    },
+    "options": {
+     "sites_dir": "~/code/Sites",
+     "builder": "claude",
+     "worker_token": "WEBFACTORY_TOKEN"
+    },
+    "entry_label": "Site",
+    "entry_schema": {
+     "domain": "str"
+    },
+    "entry_form": {
+     "domain": "Domain"
+    },
+    "entries": [
+     "yepiz-tech"
+    ]
+   }
   },
   {
    "name": "email",
@@ -580,5 +602,49 @@
    "note": null,
    "start": null
   }
- ]
+ ],
+ "store": [
+  {
+   "name": "web-factory",
+   "title": "Web Factory",
+   "kind": "integration",
+   "description": "Builds sites",
+   "version": "0.7.0",
+   "installed_version": "0.6.0",
+   "installed": true,
+   "host": "kihon",
+   "update_available": true,
+   "listed": "store",
+   "repo_name": "YepizTechJonathan/hisho-addon-web-factory",
+   "previous": null
+  },
+  {
+   "name": "vikunja",
+   "title": "Vikunja",
+   "kind": "integration",
+   "description": "Tasks",
+   "version": "0.2.0",
+   "installed_version": null,
+   "installed": false,
+   "host": null,
+   "update_available": false,
+   "listed": "store",
+   "repo_name": "YepizTechJonathan/hisho-addon-vikunja",
+   "previous": null
+  }
+ ],
+ "repositories": [
+  {
+   "url": "https://github.com/YepizTechJonathan/hisho-addon-web-factory",
+   "name": "YepizTechJonathan/hisho-addon-web-factory",
+   "cloned": true,
+   "listed": "store"
+  }
+ ],
+ "phone_levels": {
+  "all": "everything",
+  "problems": "problems (not info)",
+  "important": "critical and decisions only",
+  "off": "nothing"
+ }
 }

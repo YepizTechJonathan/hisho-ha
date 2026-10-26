@@ -367,3 +367,22 @@ async def test_due_dates_calendar(hass: HomeAssistant, hisho: AiohttpClientMocke
         blocking=True, return_response=True))[entity_id]["events"]
     assert [e["summary"] for e in events] == ["YepizTech: Annual report", "PatriotPoint: Quarterly taxes"]
     assert "Aim to start by 2026-11-01" in events[0]["description"]
+
+
+async def test_addon_updates_and_phone_alerts(hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry) -> None:
+    """A store add-on with a newer version shows in HA's Updates; installing goes through Hisho's store."""
+    await setup_entry(hass, config_entry)
+    update = _eid(hass, "update", "addon_web-factory_update")
+    state = hass.states.get(update)
+    assert state.state == "on"
+    assert (state.attributes["installed_version"], state.attributes["latest_version"]) == ("0.6.0", "0.7.0")
+    await hass.services.async_call("update", "install", {"entity_id": update}, blocking=True)
+    assert _actions(hisho)[-1] == {"action": "store.update", "target": "web-factory", "args": {"host": "kihon"}}
+    assert hass.states.get(_eid(hass, "sensor", "addon_updates")).state == "1"
+
+    phone = _eid(hass, "select", "phone_alerts")
+    assert hass.states.get(phone).state == "all"
+    await hass.services.async_call("select", "select_option", {"entity_id": phone, "option": "important"}, blocking=True)
+    assert _actions(hisho)[-1] == {"action": "notify.channels", "target": "", "args": {"app": "important"}}
+    settings = hass.states.get(_eid(hass, "sensor", "addon_web-factory_status")).attributes["settings"]
+    assert settings["schema"]["builder"] == "list(claude|codex)"
