@@ -209,3 +209,21 @@ async def test_a_device_can_be_deleted_only_once_hisho_drops_it(
     assert not await async_remove_config_entry_device(hass, config_entry, hub)
     assert not await async_remove_config_entry_device(hass, config_entry, kihon)
     assert await async_remove_config_entry_device(hass, config_entry, leftover)
+
+
+async def test_the_hisho_cards_load_with_the_frontend_when_installed(hass: HomeAssistant, tmp_path) -> None:
+    """The sidebar's hisho:kanji needs the cards before the sidebar is drawn: the frontend loads them at startup."""
+    from unittest.mock import patch
+
+    from custom_components.hisho import CARDS_FILE, async_load_cards_early
+
+    hass.config.config_dir = str(tmp_path)
+    with patch("homeassistant.components.frontend.add_extra_js_url") as add:
+        assert await async_load_cards_early(hass) is None  # not installed: nothing asked of the frontend
+        add.assert_not_called()
+        cards = tmp_path.joinpath(*CARDS_FILE)
+        cards.parent.mkdir(parents=True)
+        cards.write_text("// cards")
+        url = await async_load_cards_early(hass)
+    assert url and url.startswith("/hacsfiles/hisho-ha-cards/hisho-ha-cards.js?v=")
+    add.assert_called_once_with(hass, url)

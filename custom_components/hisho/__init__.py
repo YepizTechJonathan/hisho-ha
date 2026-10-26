@@ -7,6 +7,9 @@ polls ``GET /api/ha/snapshot`` and presses Hisho's controls through
 
 from __future__ import annotations
 
+import logging
+from pathlib import Path
+
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, device_registry as dr
@@ -33,10 +36,36 @@ PLATFORMS: list[Platform] = [
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
+_LOGGER = logging.getLogger(__name__)
+
+# The Hisho cards (HACS dashboard add-on hisho-ha-cards) register Hisho's icons (hisho:kanji). Home Assistant draws
+# the sidebar before it loads dashboard resources, so the Hisho dashboard's sidebar icon would be blank: load the
+# cards with the frontend itself when they are installed. Loading them twice (here and as a resource) is harmless.
+CARDS_FILE = ("www", "community", "hisho-ha-cards", "hisho-ha-cards.js")
+CARDS_URL = "/hacsfiles/hisho-ha-cards/hisho-ha-cards.js"
+
+
+async def async_load_cards_early(hass: HomeAssistant) -> str | None:
+    """Have the frontend load the Hisho cards at startup; the URL, or None when they aren't installed."""
+    path = Path(hass.config.path(*CARDS_FILE))
+    mtime = await hass.async_add_executor_job(lambda: path.stat().st_mtime if path.is_file() else None)
+    if mtime is None:
+        return None
+    url = f"{CARDS_URL}?v={int(mtime)}"  # a new version after an update, not the browser's cached one
+    try:
+        from homeassistant.components.frontend import add_extra_js_url  # noqa: PLC0415
+
+        add_extra_js_url(hass, url)
+    except (ImportError, KeyError):  # no frontend (a headless Home Assistant): nothing to draw anyway
+        _LOGGER.debug("Frontend not loaded; the Hisho cards load with the dashboard")
+        return None
+    return url
+
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register Hisho's services (once, for every entry)."""
+    """Register Hisho's services (once, for every entry), and load the Hisho cards with the frontend."""
     async_setup_services(hass)
+    await async_load_cards_early(hass)
     return True
 
 
