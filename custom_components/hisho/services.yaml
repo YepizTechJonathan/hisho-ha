@@ -109,3 +109,18 @@ create_job:
     meta:
       selector:
         object:
+ask:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: hisho
+    text:
+      required: true
+      example: What needs me today?
+      selector:
+        text:
+          multiline: true
+    conversation_id:
+      selector:
+        text:

@@ -13,10 +13,11 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import async_register_admin_service
 
+from .api import HishoError
 from .const import DOMAIN
 from .coordinator import HishoCoordinator
 
@@ -66,6 +67,11 @@ CREATE_JOB_SCHEMA = vol.Schema(
         vol.Optional("worker"): cv.string,
         vol.Optional("meta", default={}): dict,
     }
+)
+
+
+ASK_SCHEMA = vol.Schema(
+    {**BASE, vol.Required("text"): cv.string, vol.Optional("conversation_id"): cv.string}
 )
 
 
@@ -128,12 +134,27 @@ def async_setup_services(hass: HomeAssistant) -> None:
         args = {k: call.data[k] for k in ("kind", "worker", "meta") if k in call.data}
         return _response(await _coordinator(hass, call).async_action("job.create", "", args))
 
+    async def ask(call: ServiceCall) -> ServiceResponse:
+        coordinator = _coordinator(hass, call)
+        user = {"id": None, "name": "Home Assistant", "is_admin": True}
+        if call.context.user_id:
+            found = await hass.auth.async_get_user(call.context.user_id)
+            user = {"id": call.context.user_id, "name": found.name if found else "someone",
+                    "is_admin": bool(found and found.is_admin)}
+        try:
+            return await coordinator.client.async_converse(
+                {"text": call.data["text"], "conversation_id": call.data.get("conversation_id"), "user": user}
+            )
+        except HishoError as err:
+            raise HomeAssistantError(str(err) or type(err).__name__) from err
+
     for name, handler, schema in (
         ("run_action", run_action, RUN_ACTION_SCHEMA),
         ("alert", alert, ALERT_SCHEMA),
         ("maintenance", maintenance, MAINTENANCE_SCHEMA),
         ("job", job, JOB_SCHEMA),
         ("create_job", create_job, CREATE_JOB_SCHEMA),
+        ("ask", ask, ASK_SCHEMA),
     ):
         # Admins only (Jonathan, 2026-10-26); automations and scripts still call them.
         async_register_admin_service(

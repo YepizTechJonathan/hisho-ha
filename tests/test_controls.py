@@ -386,3 +386,42 @@ async def test_addon_updates_and_phone_alerts(hass: HomeAssistant, hisho: Aiohtt
     assert _actions(hisho)[-1] == {"action": "notify.channels", "target": "", "args": {"app": "important"}}
     settings = hass.states.get(_eid(hass, "sensor", "addon_web-factory_status")).attributes["settings"]
     assert settings["schema"]["builder"] == "list(claude|codex)"
+
+
+async def test_hisho_answers_in_assist(
+    hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry, hass_read_only_user
+) -> None:
+    """Assist's Hisho agent sends the words and who said them; Hisho's answer is spoken back."""
+    from homeassistant.components import conversation
+    from homeassistant.core import Context
+
+    hisho.post(URL + "/api/ha/converse", json={"ok": True, "reply": "The kitchen lights are on.", "model": "haiku"})
+    await setup_entry(hass, config_entry)
+    agent = _eid(hass, "conversation", "assistant")
+    result = await conversation.async_converse(
+        hass, "turn on the kitchen lights", None, Context(user_id=hass_read_only_user.id), agent_id=agent
+    )
+    assert result.response.speech["plain"]["speech"] == "The kitchen lights are on."
+    sent = next(c[2] for c in hisho.mock_calls if str(c[1]).endswith("/api/ha/converse"))
+    assert sent["text"] == "turn on the kitchen lights"
+    assert sent["user"]["is_admin"] is False and sent["conversation_id"] == result.conversation_id
+
+
+async def test_assist_says_so_when_hisho_is_out_of_reach(
+    hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry
+) -> None:
+    from homeassistant.components import conversation
+    from homeassistant.core import Context
+
+    hisho.post(URL + "/api/ha/converse", status=403, json={"detail": "needs the operate scope"})
+    await setup_entry(hass, config_entry)
+    result = await conversation.async_converse(hass, "what needs me?", None, Context(),
+                                               agent_id=_eid(hass, "conversation", "assistant"))
+    assert "needs the operate scope" in result.response.speech["plain"]["speech"]
+
+
+async def test_scripts_can_ask_hisho(hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry) -> None:
+    hisho.post(URL + "/api/ha/converse", json={"ok": True, "reply": "Nothing urgent.", "model": "haiku"})
+    await setup_entry(hass, config_entry)
+    response = await hass.services.async_call(DOMAIN, "ask", {"text": "what needs me?"}, blocking=True, return_response=True)
+    assert response["reply"] == "Nothing urgent."

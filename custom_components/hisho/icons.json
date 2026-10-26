@@ -215,6 +215,11 @@
       "phone_alerts": {
         "default": "mdi:cellphone-message"
       }
+    },
+    "conversation": {
+      "assistant": {
+        "default": "mdi:account-voice"
+      }
     }
   },
   "services": {
@@ -232,6 +237,9 @@
     },
     "create_job": {
       "service": "mdi:plus-box"
+    },
+    "ask": {
+      "service": "mdi:chat-question"
     }
   }
 }

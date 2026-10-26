@@ -28,6 +28,14 @@ def auto_enable_custom_integrations(enable_custom_integrations: None) -> Generat
     yield
 
 
+@pytest.fixture(autouse=True)
+async def homeassistant_core(hass: HomeAssistant) -> None:
+    """The Hisho agent depends on conversation, which needs HA's core component (always there in a real HA)."""
+    from homeassistant.setup import async_setup_component
+
+    assert await async_setup_component(hass, "homeassistant", {})
+
+
 @pytest.fixture
 def snapshot_data() -> dict[str, Any]:
     """A fresh copy of a real snapshot, safe to edit per test."""

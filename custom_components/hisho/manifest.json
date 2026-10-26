@@ -3,11 +3,11 @@
   "name": "Hisho",
   "codeowners": ["@YepizTechJonathan"],
   "config_flow": true,
-  "dependencies": ["persistent_notification"],
+  "dependencies": ["conversation", "persistent_notification"],
   "documentation": "https://github.com/YepizTechJonathan/hisho-ha",
   "integration_type": "hub",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/YepizTechJonathan/hisho-ha/issues",
   "requirements": [],
-  "version": "1.5.0"
+  "version": "1.6.0"
 }

@@ -1,1 +1,5 @@
 pytest-homeassistant-custom-component==0.13.373
+# what HA's conversation component needs (the Hisho agent depends on it)
+gazetteer-matcher==1.1.0
+hassil==3.12.1
+home-assistant-intents==2026.10.6

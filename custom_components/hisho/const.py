@@ -13,6 +13,9 @@ CONF_SHOW_NETWORK: Final = "show_network"
 SNAPSHOT_PATH: Final = "/api/ha/snapshot"
 PAIR_PATH: Final = "/api/ha/pair"
 ACTION_PATH: Final = "/api/ha/action"
+CONVERSE_PATH: Final = "/api/ha/converse"
+# Fable thinking hard can take ten minutes (Hisho's own limit); give it a little more.
+CONVERSE_TIMEOUT: Final = 630
 # Hisho forgets a pairing request after ten minutes; give up a little before.
 PAIR_TIMEOUT_SECONDS: Final = 570
 # Highest snapshot schema this version understands. Hisho bumps it when a field

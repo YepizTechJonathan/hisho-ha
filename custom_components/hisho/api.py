@@ -7,7 +7,15 @@ from typing import Any
 
 import aiohttp
 
-from .const import ACTION_PATH, PAIR_PATH, REQUEST_TIMEOUT, SNAPSHOT_PATH, SUPPORTED_SCHEMA
+from .const import (
+    ACTION_PATH,
+    CONVERSE_PATH,
+    CONVERSE_TIMEOUT,
+    PAIR_PATH,
+    REQUEST_TIMEOUT,
+    SNAPSHOT_PATH,
+    SUPPORTED_SCHEMA,
+)
 
 
 class HishoError(Exception):
@@ -61,14 +69,16 @@ class HishoClient:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._token}"} if self._token else {}
 
-    async def _request(self, method: str, path: str, body: dict[str, Any] | None = None) -> tuple[int, Any]:
+    async def _request(
+        self, method: str, path: str, body: dict[str, Any] | None = None, timeout: float = REQUEST_TIMEOUT
+    ) -> tuple[int, Any]:
         try:
             async with self._session.request(
                 method,
                 self._url + path,
                 json=body,
                 headers=self._headers(),
-                timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
+                timeout=aiohttp.ClientTimeout(total=timeout),
             ) as resp:
                 try:
                     data = await resp.json()
@@ -128,3 +138,14 @@ class HishoClient:
             detail = data.get("detail") if isinstance(data, dict) else None
             raise HishoActionError(status, str(detail or f"HTTP {status}"))
         return data
+
+    async def async_converse(self, body: dict[str, Any]) -> dict[str, Any]:
+        """One turn with Hisho's assistant: {reply, model, ok}. Long thinking can take minutes."""
+        status, data = await self._request("POST", CONVERSE_PATH, body, timeout=CONVERSE_TIMEOUT)
+        if status == 401:
+            raise HishoAuthError
+        if status != 200 or not isinstance(data, dict):
+            detail = data.get("detail") if isinstance(data, dict) else None
+            raise HishoActionError(status, str(detail or f"HTTP {status}"))
+        return data
+
