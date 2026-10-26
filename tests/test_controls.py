@@ -288,3 +288,20 @@ async def test_network_gear_only_on_request(
     await hass.async_block_till_done()
     assert config_entry.options == {"show_network": True}
     assert devices.async_get_device_by_identifier(switch_id, config_entry.entry_id).name == "KidsRoom Switch"
+
+
+async def test_attributes_cards_read(hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry) -> None:
+    """The hisho-ha-cards dashboard reads lists and item actions from attributes, never from Hisho."""
+    await setup_entry(hass, config_entry)
+    jobs = hass.states.get(_eid(hass, "sensor", "jobs_active")).attributes["jobs"]
+    assert [j["id"] for j in jobs] == ["job-1", "job-2"]
+    projects = hass.states.get(_eid(hass, "sensor", "projects_active")).attributes["projects"]
+    assert projects[0]["asks"] == ["Rotate the password"]
+    vm = hass.states.get(_eid(hass, "sensor", "device_truenas_item_proxmox_PVE_521")).attributes
+    assert (vm["addon"], vm["entry"], vm["item_id"]) == ("proxmox", "PVE", "521")
+    assert vm["actions"] == [{"id": "shutdown", "label": "shut down", "danger": True}]
+    souko = hass.states.get(_eid(hass, "sensor", "souko_state")).attributes
+    assert souko["machine"] == "souko" and souko["items"][0]["id"] == "exporter"
+    assert hass.states.get(_eid(hass, "sensor", "hashira-ren_state")).attributes["power"] == ["park", "wake"]
+    addon = hass.states.get(_eid(hass, "sensor", "addon_web-factory_status")).attributes
+    assert addon["addon"] == "web-factory" and addon["actions"][1]["danger"] is True

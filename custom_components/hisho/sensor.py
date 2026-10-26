@@ -256,6 +256,9 @@ async def async_setup_entry(
 class HishoHubSensor(HishoEntity, SensorEntity):
     """A fleet-wide reading."""
 
+    # Lists for cards: shown, not kept in history (they would fill the recorder).
+    _unrecorded_attributes = frozenset({"jobs", "projects", "alerts", "allowed"})
+
     entity_description: HishoHubSensorDescription
 
     def __init__(self, coordinator: HishoCoordinator, description: HishoHubSensorDescription) -> None:
@@ -283,6 +286,12 @@ class HishoHubSensor(HishoEntity, SensorEntity):
         if key == "needs_you":
             return {"alerts": [{k: a.get(k) for k in ("id", "severity", "title")}
                                for a in data.alerts.values() if not a.get("muted") and not a.get("off")]}
+        if key in ("jobs_active", "jobs_failed"):
+            return {"jobs": [{k: j.get(k) for k in ("id", "kind", "status", "worker", "updated_at", "reason")}
+                             for j in data.raw.get("jobs") or []]} if key == "jobs_active" else None
+        if key == "projects_active":
+            return {"projects": [{k: p.get(k) for k in ("name", "title", "company", "status", "waiting_on", "next", "asks")}
+                                 for p in data.raw.get("projects") or []]}
         if key == "projects_waiting":
             return {"projects": [{"name": p.get("title") or p.get("name"), "asks": p.get("asks")}
                                  for p in data.raw.get("projects") or []
@@ -291,7 +300,9 @@ class HishoHubSensor(HishoEntity, SensorEntity):
 
 
 class HishoMachineSensor(HishoMachineEntity, SensorEntity):
-    """A reading of one machine."""
+    """A reading of one machine. Its State also carries what cards need to act on it."""
+
+    _unrecorded_attributes = frozenset({"items", "power"})
 
     entity_description: HishoMachineSensorDescription
 
@@ -314,6 +325,16 @@ class HishoMachineSensor(HishoMachineEntity, SensorEntity):
         """The reading."""
         machine = self.machine
         return self.entity_description.value_fn(machine) if machine is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """On State only: the machine's id, why it is off, and what add-ons offer for it (cards use these)."""
+        if self.entity_description.key != "state":
+            return None
+        machine = self.machine or {}
+        controls = self.coordinator.data.controls.get(self.machine_id) or {}
+        return {"machine": self.machine_id, "reason": machine.get("reason"), "role": machine.get("role"),
+                "power": controls.get("power") or [], "items": controls.get("items") or []}
 
 
 class HishoFolderSensor(HishoEntity, SensorEntity):
@@ -430,6 +451,8 @@ class HishoBoxSensor(HishoBoxEntity, SensorEntity):
 class HishoBoxItemSensor(HishoBoxEntity, SensorEntity):
     """One thing an add-on watches on a box (a pool, a VM, updates)."""
 
+    _unrecorded_attributes = frozenset({"facts", "actions"})
+
     _attr_translation_key = "box_item"
 
     def __init__(self, coordinator: HishoCoordinator, device_id: str, item: dict[str, Any]) -> None:
@@ -457,11 +480,14 @@ class HishoBoxItemSensor(HishoBoxEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """What the add-on says about it."""
         item = self._item() or {}
-        return {"facts": item.get("facts") or [], "addon": item.get("addon")}
+        return {"facts": item.get("facts") or [], "addon": item.get("addon"), "entry": item.get("entry"),
+                "item_id": item.get("id"), "actions": item.get("actions") or []}
 
 
 class HishoAddonStatus(HishoAddonEntity, SensorEntity):
     """How an add-on is doing: ok, needs a look, problem, needs setup, off."""
+
+    _unrecorded_attributes = frozenset({"actions", "problems"})
 
     _attr_translation_key = "addon_status"
     _attr_device_class = SensorDeviceClass.ENUM
@@ -487,5 +513,6 @@ class HishoAddonStatus(HishoAddonEntity, SensorEntity):
         """Problems, version, where it runs."""
         addon = self.addon or {}
         return {"problems": addon.get("problems") or [], "version": addon.get("version"),
-                "host": addon.get("host"), "kind": addon.get("kind")}
+                "host": addon.get("host"), "kind": addon.get("kind"), "addon": self.addon_name,
+                "actions": addon.get("actions") or []}
 
