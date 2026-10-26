@@ -44,6 +44,21 @@ _LOGGER = logging.getLogger(__name__)
 CARDS_FILE = ("www", "community", "hisho-ha-cards", "hisho-ha-cards.js")
 CARDS_URL = "/hacsfiles/hisho-ha-cards/hisho-ha-cards.js"
 
+# Pictures for the Hisho dashboard (its background), served at /hisho_static/... The cards are a separate HACS
+# download that ships only their script, so the pictures come with the integration.
+STATIC_URL = "/hisho_static"
+STATIC_DIR = Path(__file__).parent / "www"
+
+
+async def async_serve_static(hass: HomeAssistant) -> bool:
+    """Serve the dashboard's pictures; False when there is no web server (a headless Home Assistant)."""
+    if getattr(hass, "http", None) is None:
+        return False
+    from homeassistant.components.http import StaticPathConfig  # noqa: PLC0415
+
+    await hass.http.async_register_static_paths([StaticPathConfig(STATIC_URL, str(STATIC_DIR), True)])
+    return True
+
 
 async def async_load_cards_early(hass: HomeAssistant) -> str | None:
     """Have the frontend load the Hisho cards at startup; the URL, or None when they aren't installed."""
@@ -63,8 +78,9 @@ async def async_load_cards_early(hass: HomeAssistant) -> str | None:
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register Hisho's services (once, for every entry), and load the Hisho cards with the frontend."""
+    """Register Hisho's services (once, for every entry), serve the dashboard's pictures, load the cards early."""
     async_setup_services(hass)
+    await async_serve_static(hass)
     await async_load_cards_early(hass)
     return True
 

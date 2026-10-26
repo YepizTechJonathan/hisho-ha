@@ -106,6 +106,9 @@
       "projects_waiting": {
         "default": "mdi:account-clock"
       },
+      "done_for_you": {
+        "default": "mdi:check-all"
+      },
       "actions_allowed": {
         "default": "mdi:shield-key"
       },

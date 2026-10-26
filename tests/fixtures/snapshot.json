@@ -646,5 +646,17 @@
   "problems": "problems (not info)",
   "important": "critical and decisions only",
   "off": "nothing"
- }
+ },
+ "activity": [
+  {
+   "at": "2026-10-26T09:00:00+00:00",
+   "event": "answered",
+   "text": "Answered 2 questions for you"
+  },
+  {
+   "at": "2026-10-26T07:00:00+00:00",
+   "event": "job-transition",
+   "text": "Transcribed on Hashira Ren"
+  }
+ ]
 }

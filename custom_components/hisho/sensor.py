@@ -112,6 +112,12 @@ HUB_SENSORS: tuple[HishoHubSensorDescription, ...] = (
         value_fn=lambda d: len(d.allowed),
     ),
     HishoHubSensorDescription(
+        key="done_for_you",
+        translation_key="done_for_you",
+        # What Hisho did on its own in the last day (Core 2026-10-26+); unavailable from an older Core.
+        value_fn=lambda d: len(d.raw.get("activity") or []) if "activity" in d.raw else None,
+    ),
+    HishoHubSensorDescription(
         key="sync_conflicts",
         translation_key="sync_conflicts",
         state_class=SensorStateClass.MEASUREMENT,
@@ -263,7 +269,7 @@ class HishoHubSensor(HishoEntity, SensorEntity):
     """A fleet-wide reading."""
 
     # Lists for cards: shown, not kept in history (they would fill the recorder).
-    _unrecorded_attributes = frozenset({"jobs", "projects", "alerts", "allowed", "store", "repositories"})
+    _unrecorded_attributes = frozenset({"jobs", "projects", "alerts", "allowed", "store", "repositories", "items"})
 
     entity_description: HishoHubSensorDescription
 
@@ -297,6 +303,8 @@ class HishoHubSensor(HishoEntity, SensorEntity):
                              for j in data.raw.get("jobs") or []]} if key == "jobs_active" else None
         if key == "addon_updates":
             return {"store": data.raw.get("store") or [], "repositories": data.raw.get("repositories") or []}
+        if key == "done_for_you":
+            return {"items": [{k: i.get(k) for k in ("at", "event", "text")} for i in data.raw.get("activity") or []]}
         if key == "projects_active":
             return {"projects": [{k: p.get(k) for k in ("name", "title", "company", "status", "waiting_on", "next", "asks")}
                                  for p in data.raw.get("projects") or []]}

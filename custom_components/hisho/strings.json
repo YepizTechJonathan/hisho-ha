@@ -168,6 +168,10 @@
         "name": "Projects waiting on you",
         "unit_of_measurement": "projects"
       },
+      "done_for_you": {
+        "name": "Done for you today",
+        "unit_of_measurement": "things"
+      },
       "actions_allowed": {
         "name": "Actions allowed",
         "unit_of_measurement": "actions"
