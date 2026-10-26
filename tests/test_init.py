@@ -227,3 +227,18 @@ async def test_the_hisho_cards_load_with_the_frontend_when_installed(hass: HomeA
         url = await async_load_cards_early(hass)
     assert url and url.startswith("/hacsfiles/hisho-ha-cards/hisho-ha-cards.js?v=")
     add.assert_called_once_with(hass, url)
+
+
+async def test_the_dashboard_picture_is_served(hass: HomeAssistant) -> None:
+    """The Hisho dashboard's background comes with the integration, at /hisho_static/forest.jpg."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from custom_components.hisho import STATIC_DIR, STATIC_URL, async_serve_static
+
+    assert (STATIC_DIR / "forest.jpg").is_file()
+    hass.http = None
+    assert await async_serve_static(hass) is False  # no web server: nothing to serve
+    hass.http = MagicMock(async_register_static_paths=AsyncMock())
+    assert await async_serve_static(hass) is True
+    (config,) = hass.http.async_register_static_paths.call_args.args[0]
+    assert (config.url_path, config.path, config.cache_headers) == (STATIC_URL, str(STATIC_DIR), True)
