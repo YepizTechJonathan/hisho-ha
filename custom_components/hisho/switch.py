@@ -93,12 +93,11 @@ class _Maintenance:
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Start maintenance."""
         await self.coordinator.async_action(
-            "maintenance.on", self._target, {"reason": "from Home Assistant"}, confirm=True
-        )
+            "maintenance.on", self._target, {"reason": "from Home Assistant"}, confirm=True, context=self._context)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """End maintenance."""
-        await self.coordinator.async_action("maintenance.off", self._target)
+        await self.coordinator.async_action("maintenance.off", self._target, context=self._context)
 
 
 class HishoFleetMaintenance(_Maintenance, HishoEntity, SwitchEntity):
@@ -174,11 +173,11 @@ class HishoUnitSwitch(HishoMachineEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Start it."""
-        await self.coordinator.async_action("unit.start", self.machine_id, {"unit": self._unit})
+        await self.coordinator.async_action("unit.start", self.machine_id, {"unit": self._unit}, context=self._context)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Stop it."""
-        await self.coordinator.async_action("unit.stop", self.machine_id, {"unit": self._unit}, confirm=True)
+        await self.coordinator.async_action("unit.stop", self.machine_id, {"unit": self._unit}, confirm=True, context=self._context)
 
 
 class HishoAddonEnabled(HishoAddonEntity, SwitchEntity):
@@ -198,8 +197,8 @@ class HishoAddonEnabled(HishoAddonEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the add-on on."""
-        await self.coordinator.async_action("addon.enable", self.addon_name, {"host": (self.addon or {}).get("host") or ""})
+        await self.coordinator.async_action("addon.enable", self.addon_name, {"host": (self.addon or {}).get("host") or ""}, context=self._context)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the add-on off."""
-        await self.coordinator.async_action("addon.disable", self.addon_name, confirm=True)
+        await self.coordinator.async_action("addon.disable", self.addon_name, confirm=True, context=self._context)

@@ -305,3 +305,30 @@ async def test_attributes_cards_read(hass: HomeAssistant, hisho: AiohttpClientMo
     assert hass.states.get(_eid(hass, "sensor", "hashira-ren_state")).attributes["power"] == ["park", "wake"]
     addon = hass.states.get(_eid(hass, "sensor", "addon_web-factory_status")).attributes
     assert addon["addon"] == "web-factory" and addon["actions"][1]["danger"] is True
+
+
+async def test_only_admins_press_hisho_controls(
+    hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry, hass_read_only_user, hass_admin_user
+) -> None:
+    """Jonathan, 2026-10-26: Hisho's controls are for admins. A family member's tap is refused; an admin's and an
+    automation's (no user) go through."""
+    from homeassistant.core import Context
+    from homeassistant.exceptions import Unauthorized
+
+    await setup_entry(hass, config_entry)
+    wake = _eid(hass, "button", "hashira-ren_wake")
+    user = Context(user_id=hass_read_only_user.id)
+    for call in (
+        ("button", "press", {"entity_id": wake}),
+        ("switch", "turn_on", {"entity_id": _eid(hass, "switch", "souko_maintenance")}),
+        ("todo", "update_item", {"entity_id": _eid(hass, "todo", "needs_you"), "item": "d2eb836753a0", "status": "completed"}),
+        (DOMAIN, "run_action", {"action": "jobs.reap"}),
+    ):
+        with pytest.raises(Unauthorized):
+            await hass.services.async_call(*call, blocking=True, context=user)
+    assert _actions(hisho) == []
+
+    await hass.services.async_call("button", "press", {"entity_id": wake}, blocking=True,
+                                   context=Context(user_id=hass_admin_user.id))
+    await hass.services.async_call(DOMAIN, "run_action", {"action": "jobs.reap"}, blocking=True)  # an automation
+    assert [a["action"] for a in _actions(hisho)] == ["machine.wake", "jobs.reap"]

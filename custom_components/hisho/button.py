@@ -55,8 +55,7 @@ class _Press:
     async def async_press(self) -> None:
         """Press it."""
         await self.coordinator.async_action(
-            self.entity_description.action, self._target, self._args, confirm=self.entity_description.danger
-        )
+            self.entity_description.action, self._target, self._args, confirm=self.entity_description.danger, context=self._context)
 
 
 async def async_setup_entry(

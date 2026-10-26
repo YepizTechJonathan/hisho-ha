@@ -15,6 +15,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.service import async_register_admin_service
 
 from .const import DOMAIN
 from .coordinator import HishoCoordinator
@@ -134,6 +135,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
         ("job", job, JOB_SCHEMA),
         ("create_job", create_job, CREATE_JOB_SCHEMA),
     ):
-        hass.services.async_register(
-            DOMAIN, name, handler, schema=schema, supports_response=SupportsResponse.OPTIONAL
+        # Admins only (Jonathan, 2026-10-26); automations and scripts still call them.
+        async_register_admin_service(
+            hass, DOMAIN, name, handler, schema=schema, supports_response=SupportsResponse.OPTIONAL
         )

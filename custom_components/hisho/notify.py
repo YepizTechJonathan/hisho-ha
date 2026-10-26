@@ -46,4 +46,4 @@ class HishoPhone(HishoEntity, NotifyEntity):
         args = {"message": message}
         if title:
             args["title"] = title
-        await self.coordinator.async_action("notify.send", "", args)
+        await self.coordinator.async_action("notify.send", "", args, context=self._context)

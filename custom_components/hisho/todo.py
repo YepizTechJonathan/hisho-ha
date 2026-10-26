@@ -76,4 +76,4 @@ class HishoNeedsYou(HishoEntity, TodoListEntity):
         if item.uid not in self.coordinator.data.alerts:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="alert_gone")
         verb = "ack" if item.status == TodoItemStatus.COMPLETED else "unack"
-        await self.coordinator.async_action(f"alert.{verb}", item.uid)
+        await self.coordinator.async_action(f"alert.{verb}", item.uid, context=self._context)

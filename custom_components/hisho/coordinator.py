@@ -8,8 +8,8 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_TOKEN, CONF_URL, CONF_VERIFY_SSL
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.core import Context, HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError, Unauthorized
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -132,9 +132,22 @@ class HishoCoordinator(DataUpdateCoordinator[HishoData]):
         return data
 
     async def async_action(
-        self, action: str, target: str = "", args: dict[str, Any] | None = None, confirm: bool = False
+        self,
+        action: str,
+        target: str = "",
+        args: dict[str, Any] | None = None,
+        confirm: bool = False,
+        context: Context | None = None,
     ) -> Any:
-        """Press one of Hisho's controls, then refresh so the result shows at once."""
+        """Press one of Hisho's controls, then refresh so the result shows at once.
+
+        Hisho's controls are for Home Assistant admins (Jonathan, 2026-10-26): a press by
+        a non-admin user is refused. Automations and scripts (no user) still run them.
+        """
+        if context is not None and context.user_id:
+            user = await self.hass.auth.async_get_user(context.user_id)
+            if user is None or not user.is_admin:
+                raise Unauthorized(context=context, user_id=context.user_id, perm_category="hisho")
         try:
             result = await self.client.async_action(action, target, args, confirm)
         except HishoAuthError as err:
