@@ -75,6 +75,9 @@
       "core_reachable": {
         "name": "Core reachable"
       },
+      "core_maintenance": {
+        "name": "Core in maintenance"
+      },
       "critical_alert": {
         "name": "Critical alert"
       }

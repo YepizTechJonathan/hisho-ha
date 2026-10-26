@@ -1,9 +1,10 @@
-"""Binary sensors: online, sync and services."""
+"""Binary sensors: online, sync, services, and whether Core answers / is in planned maintenance."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
@@ -14,6 +15,8 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.event import async_track_point_in_utc_time
+from homeassistant.util import dt as dt_util
 
 from .coordinator import HishoConfigEntry, HishoCoordinator
 from .entity import HishoEntity, HishoMachineEntity
@@ -73,7 +76,8 @@ async def async_setup_entry(
 ) -> None:
     """Add the hub's sync sensor, then machines, services and peers as they appear."""
     coordinator = entry.runtime_data
-    async_add_entities([HishoSyncProblem(coordinator), HishoCoreReachable(coordinator), HishoCritical(coordinator)])
+    async_add_entities([HishoSyncProblem(coordinator), HishoCoreReachable(coordinator), HishoCoreMaintenance(coordinator),
+                        HishoCritical(coordinator)])
     known: set[str] = set()
 
     @callback
@@ -235,6 +239,89 @@ class HishoCoreReachable(HishoEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         """The last poll worked."""
         return self.coordinator.last_update_success
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """When Core last answered (the blueprint's message says since when it is down)."""
+        seen = getattr(self.coordinator, "last_seen", None)
+        return {"last_seen": seen.isoformat() if seen else None}
+
+
+def _parse_time(value: Any) -> datetime | None:
+    if not value:
+        return None
+    return dt_util.parse_datetime(str(value))
+
+
+class HishoCoreMaintenance(HishoEntity, BinarySensorEntity):
+    """On while Hisho's Core machine is in planned maintenance (or the whole fleet is), as the last good poll
+    said. Stays available when Core does not answer, and remembers: a planned outage of Kihon must not alarm.
+    A window with an end time turns off at that time by itself, Core answering or not, so an outage that
+    outlasts its window does alarm. The "Hisho Core down" blueprint reads it."""
+
+    _attr_translation_key = "core_maintenance"
+
+    def __init__(self, coordinator: HishoCoordinator) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, "core_maintenance")
+        self._unsub_end: Any = None
+
+    def _entry(self) -> dict[str, Any] | None:
+        data = self.coordinator.data
+        if data is None:
+            return None
+        maint = data.maintenance
+        return maint.get("fleet") or (maint.get("machines") or {}).get(data.raw.get("core_host") or "")
+
+    @property
+    def available(self) -> bool:
+        """Always: it is what tells a planned outage from a real one."""
+        return True
+
+    @property
+    def is_on(self) -> bool:
+        """In maintenance now: an entry, and its end (if any) not yet passed."""
+        entry = self._entry()
+        if not entry:
+            return False
+        until = _parse_time(entry.get("until"))
+        return until is None or dt_util.utcnow() < until
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Why, since when, until when (none = until someone ends it)."""
+        entry = self._entry() or {}
+        return {k: entry.get(k) for k in ("reason", "since", "until", "by")}
+
+    async def async_added_to_hass(self) -> None:
+        """Also re-check at the window's end."""
+        await super().async_added_to_hass()
+        self._schedule_end()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._schedule_end()
+        super()._handle_coordinator_update()
+
+    @callback
+    def _schedule_end(self) -> None:
+        if self._unsub_end:
+            self._unsub_end()
+            self._unsub_end = None
+        until = _parse_time((self._entry() or {}).get("until"))
+        if until and until > dt_util.utcnow():
+            self._unsub_end = async_track_point_in_utc_time(self.hass, self._window_ended, until)
+
+    @callback
+    def _window_ended(self, _now: datetime) -> None:
+        self._unsub_end = None
+        self.async_write_ha_state()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Stop the end-of-window timer."""
+        if self._unsub_end:
+            self._unsub_end()
+        await super().async_will_remove_from_hass()
 
 
 class HishoCritical(HishoEntity, BinarySensorEntity):

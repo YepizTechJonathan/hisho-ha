@@ -39,6 +39,12 @@
       },
       "critical_alert": {
         "default": "mdi:alert-octagon"
+      },
+      "core_maintenance": {
+        "default": "mdi:wrench-clock",
+        "state": {
+          "off": "mdi:check-circle-outline"
+        }
       }
     },
     "sensor": {

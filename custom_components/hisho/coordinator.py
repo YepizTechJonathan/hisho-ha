@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 import logging
 from typing import Any
 
@@ -13,6 +14,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError, 
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import (
     HishoActionError,
@@ -97,6 +99,7 @@ class HishoCoordinator(DataUpdateCoordinator[HishoData]):
             update_interval=UPDATE_INTERVAL,
         )
         self.hub_device_id: str | None = None  # set in async_setup_entry, before the platforms
+        self.last_seen: datetime | None = None  # when Core last answered
         self.client = HishoClient(
             async_get_clientsession(hass, entry.data.get(CONF_VERIFY_SSL, True)),
             entry.data[CONF_URL],
@@ -129,6 +132,7 @@ class HishoCoordinator(DataUpdateCoordinator[HishoData]):
             ) from err
         data = HishoData.from_snapshot(raw, self.config_entry.options.get(CONF_SHOW_NETWORK, False))
         self._remove_departed(data)
+        self.last_seen = dt_util.utcnow()
         return data
 
     async def async_action(

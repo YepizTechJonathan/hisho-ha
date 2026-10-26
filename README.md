@@ -48,6 +48,17 @@ The **Needs you** to-do list is Hisho's list: ticking an item acknowledges it in
 until it resolves), unticking un-acknowledges it. Claude's investigation shows in the item's description.
 The **Alert** event fires *opened* / *resolved* for automations.
 
+## When Hisho Core itself is down
+
+Hisho's own phone alerts come from Core, so they stop exactly when Core does. Home Assistant notices
+instead: **Core reachable** (off once Core stops answering; never unavailable) and **Core in maintenance**
+(Core or the whole fleet in planned maintenance, remembered from the last answer, off by itself when its
+window ends). The blueprint **Hisho Core down** (`blueprints/automation/hisho/core_down.yaml`; Settings >
+Automations > Blueprints > Import blueprint, paste its GitHub address) tells your phone after 10 minutes down
+and once when it is back, keeps quiet during planned maintenance, and still tells you if a window ends with
+Core down or an open-ended one lasts more than 12 hours. Its "Notify action" is your phone's, e.g.
+`notify.mobile_app_galaxy_s26` (Developer tools > Actions).
+
 ## Services
 
 | Service | Does |

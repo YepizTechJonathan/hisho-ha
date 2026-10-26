@@ -1,0 +1,144 @@
+blueprint:
+  name: Hisho Core down
+  description: >-
+    Tells your phone when Hisho Core (the control machine, e.g. Kihon) has not answered for a while, and
+    once when it is back. Hisho's own phone alerts come from Core, so they stop exactly when Core does;
+    Home Assistant notices instead. Quiet while Core is in planned maintenance. If a maintenance window
+    ends while Core is still down, or Core stays down for many hours during maintenance with no end time,
+    it tells you after all.
+  domain: automation
+  source_url: https://github.com/YepizTechJonathan/hisho-ha/blob/main/blueprints/automation/hisho/core_down.yaml
+  input:
+    reachable:
+      name: Core reachable
+      description: The Hisho integration's "Core reachable" sensor.
+      selector:
+        entity:
+          filter:
+            - integration: hisho
+              domain: binary_sensor
+              device_class: connectivity
+    maintenance:
+      name: Core in maintenance
+      description: The Hisho integration's "Core in maintenance" sensor.
+      selector:
+        entity:
+          filter:
+            - integration: hisho
+              domain: binary_sensor
+    notify_action:
+      name: Notify action
+      description: The action that reaches your phone, e.g. notify.mobile_app_galaxy_s26 (Developer tools > Actions).
+      selector:
+        text:
+    down_minutes:
+      name: Down for (minutes)
+      description: How long Core must be unreachable before you are told.
+      default: 10
+      selector:
+        number:
+          min: 2
+          max: 120
+          unit_of_measurement: min
+    max_quiet_hours:
+      name: Longest quiet maintenance (hours)
+      description: Maintenance with no end time keeps quiet at most this long.
+      default: 12
+      selector:
+        number:
+          min: 1
+          max: 72
+          unit_of_measurement: h
+
+mode: queued
+max_exceeded: silent
+
+variables:
+  reachable: !input reachable
+  maintenance: !input maintenance
+  notify_action: !input notify_action
+  down_minutes: !input down_minutes
+  last_seen: >-
+    {% set seen = state_attr(reachable, 'last_seen') %}
+    {{ (as_timestamp(seen) | timestamp_custom('%-I:%M %p')) if seen else 'a while ago' }}
+
+triggers:
+  - trigger: state
+    entity_id: !input reachable
+    to: "off"
+    for:
+      minutes: !input down_minutes
+    id: down
+  - trigger: state
+    entity_id: !input maintenance
+    from: "on"
+    to: "off"
+    id: window_ended
+  - trigger: state
+    entity_id: !input reachable
+    to: "off"
+    for:
+      hours: !input max_quiet_hours
+    id: long_down
+  - trigger: state
+    entity_id: !input reachable
+    from: "off"
+    to: "on"
+    id: back
+
+actions:
+  - choose:
+      - alias: Down for a while, not planned
+        conditions:
+          - condition: trigger
+            id: down
+          - condition: template
+            value_template: "{{ is_state(maintenance, 'off') }}"
+        sequence:
+          - action: !input notify_action
+            data:
+              title: Hisho Core is down
+              message: >-
+                Hisho Core has not answered since {{ last_seen }}. The dashboard, Hisho's phone alerts and
+                jobs are down until it is back. Check that the machine is on and the hisho-fluent service runs.
+      - alias: The maintenance window ended, Core still down
+        conditions:
+          - condition: trigger
+            id: window_ended
+          - condition: template
+            value_template: >-
+              {{ is_state(reachable, 'off') and
+                 (now() - states[reachable].last_changed).total_seconds() >= down_minutes * 60 }}
+        sequence:
+          - action: !input notify_action
+            data:
+              title: Hisho Core is still down
+              message: >-
+                Its maintenance window ended, but Hisho Core has not answered since {{ last_seen }}.
+      - alias: Down for many hours during maintenance with no end
+        conditions:
+          - condition: trigger
+            id: long_down
+          - condition: template
+            value_template: "{{ is_state(maintenance, 'on') }}"
+        sequence:
+          - action: !input notify_action
+            data:
+              title: Hisho Core is down for hours
+              message: >-
+                Hisho Core is in maintenance with no end time and has not answered since {{ last_seen }}.
+      - alias: Back, after an outage you were told about
+        conditions:
+          - condition: trigger
+            id: back
+          - condition: template
+            value_template: >-
+              {{ (now() - trigger.from_state.last_changed).total_seconds() >= down_minutes * 60
+                 and is_state(maintenance, 'off') }}
+        sequence:
+          - action: !input notify_action
+            data:
+              title: Hisho Core is back
+              message: >-
+                Hisho Core answers again (it was down about
+                {{ ((now() - trigger.from_state.last_changed).total_seconds() / 60) | round(0) | int }} min).
