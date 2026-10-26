@@ -96,6 +96,7 @@ class HishoCoordinator(DataUpdateCoordinator[HishoData]):
             name=DOMAIN,
             update_interval=UPDATE_INTERVAL,
         )
+        self.hub_device_id: str | None = None  # set in async_setup_entry, before the platforms
         self.client = HishoClient(
             async_get_clientsession(hass, entry.data.get(CONF_VERIFY_SSL, True)),
             entry.data[CONF_URL],

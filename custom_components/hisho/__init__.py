@@ -14,6 +14,7 @@ from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN
 from .coordinator import HishoConfigEntry, HishoCoordinator
+from .entity import hub_device_info
 from .services import async_setup_services
 
 PLATFORMS: list[Platform] = [
@@ -39,6 +40,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: HishoConfigEntry) -> boo
     """Set up Hisho from a config entry."""
     coordinator = HishoCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
+    # The hub first, so machines, boxes and add-ons can name it as the device they hang off.
+    hub = dr.async_get(hass).async_get_or_create(config_entry_id=entry.entry_id, **hub_device_info(coordinator))
+    coordinator.hub_device_id = hub.id
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

@@ -8,6 +8,7 @@ from typing import Any
 import aiohttp
 import pytest
 
+from homeassistant.components import persistent_notification
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.const import CONF_TOKEN, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
@@ -67,10 +68,43 @@ async def test_the_wait_shows_the_code_to_compare(
     assert result["type"] is FlowResultType.SHOW_PROGRESS
     assert result["progress_action"] == "wait_for_approval"
     assert result["description_placeholders"]["code"] == "K7Q-4ZP"
+    notes = persistent_notification._async_get_or_create_notifications(hass)
+    assert any("K7Q-4ZP" in n["message"] for n in notes.values())
     release.set()
     await hass.async_block_till_done()
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
     assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert not persistent_notification._async_get_or_create_notifications(hass)
+
+
+@pytest.mark.parametrize("source", ["reauth", "reconfigure"])
+async def test_re_pairing_shows_the_code_too(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, monkeypatch: pytest.MonkeyPatch,
+    config_entry: MockConfigEntry, source: str,
+) -> None:
+    """Reauth and reconfigure wait with the code in the dialog and in a notification."""
+    release = asyncio.Event()
+
+    async def held(_seconds: float) -> None:
+        await release.wait()
+
+    monkeypatch.setattr("custom_components.hisho.config_flow.asyncio.sleep", held)
+    _hisho_pairs(aioclient_mock, {"state": "approved", "token": "t"})
+    aioclient_mock.get(SNAPSHOT_URL, status=401)
+    config_entry.add_to_hass(hass)
+    result = await (config_entry.start_reauth_flow(hass) if source == "reauth"
+                    else config_entry.start_reconfigure_flow(hass))
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {} if source == "reauth" else ADDRESS
+    )
+    assert result["type"] is FlowResultType.SHOW_PROGRESS
+    assert result["description_placeholders"]["code"] == "K7Q-4ZP"
+    notes = persistent_notification._async_get_or_create_notifications(hass)
+    assert any("K7Q-4ZP" in n["message"] for n in notes.values())
+    hass.config_entries.flow.async_abort(result["flow_id"])  # the user closes the dialog
+    assert not persistent_notification._async_get_or_create_notifications(hass)
+    release.set()
+    await hass.async_block_till_done()
 
 
 async def test_pairing_only_needs_the_address(

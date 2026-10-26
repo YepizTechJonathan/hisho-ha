@@ -11,6 +11,17 @@ from .const import DOMAIN, MANUFACTURER
 from .coordinator import HishoCoordinator
 
 
+# HA 2026.10 links a device to its hub by the hub's device id; older ones by its identifier.
+_VIA_ID = "via_device_id" in DeviceInfo.__annotations__
+
+
+def via_hub(coordinator: HishoCoordinator) -> dict[str, Any]:
+    """The DeviceInfo field that hangs a device under the Hisho hub."""
+    if _VIA_ID and coordinator.hub_device_id:
+        return {"via_device_id": coordinator.hub_device_id}
+    return {"via_device": (DOMAIN, coordinator.instance_id)}
+
+
 def hub_device_info(coordinator: HishoCoordinator) -> DeviceInfo:
     """The Hisho hub: the fleet as a whole."""
     raw = coordinator.data.raw
@@ -59,7 +70,7 @@ class HishoMachineEntity(CoordinatorEntity[HishoCoordinator]):
             manufacturer=MANUFACTURER,
             model=machine.get("role") or "Machine",
             sw_version=machine.get("agent_version"),
-            via_device=(DOMAIN, coordinator.instance_id),
+            **via_hub(coordinator),
         )
 
     @property
@@ -89,7 +100,7 @@ class HishoBoxEntity(CoordinatorEntity[HishoCoordinator]):
             name=box.get("name") or device_id,
             manufacturer=MANUFACTURER,
             model=(box.get("kind") or "device").capitalize(),
-            via_device=(DOMAIN, coordinator.instance_id),
+            **via_hub(coordinator),
         )
 
     @property
@@ -120,7 +131,7 @@ class HishoAddonEntity(CoordinatorEntity[HishoCoordinator]):
             manufacturer=MANUFACTURER,
             model="Add-on",
             sw_version=addon.get("version"),
-            via_device=(DOMAIN, coordinator.instance_id),
+            **via_hub(coordinator),
             entry_type=DeviceEntryType.SERVICE,
         )
 

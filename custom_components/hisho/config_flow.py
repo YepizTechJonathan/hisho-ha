@@ -27,6 +27,7 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlowWithReload,
 )
+from homeassistant.components import persistent_notification
 from homeassistant.core import callback
 from homeassistant.const import CONF_TOKEN, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.helpers import instance_id
@@ -83,6 +84,16 @@ class HishoConfigFlow(ConfigFlow, domain=DOMAIN):
         self._pairing: dict[str, Any] = {}
         self._pair_task: asyncio.Task[dict[str, Any]] | None = None
         self._result: dict[str, Any] = {}
+
+    @property
+    def _notification_id(self) -> str:
+        return f"{DOMAIN}_pairing_{self.flow_id}"
+
+    def async_remove(self) -> None:
+        """Closed or aborted while waiting: stop polling and take the notification down."""
+        if self._pair_task is not None:
+            self._pair_task.cancel()
+        persistent_notification.async_dismiss(self.hass, self._notification_id)
 
     def _client(self, token: str | None = None) -> HishoClient:
         return HishoClient(async_get_clientsession(self.hass, self._verify_ssl), self._url, token)
@@ -174,6 +185,15 @@ class HishoConfigFlow(ConfigFlow, domain=DOMAIN):
         """Waiting for the owner to approve in Hisho, with the code to compare."""
         if self._pair_task is None:
             self._pair_task = self.hass.async_create_task(self._async_wait_for_approval())
+            # The code also as a notification: the dialog's text comes from the browser's copy of this
+            # integration's translations, and a browser still holding an older copy showed only a spinner.
+            persistent_notification.async_create(
+                self.hass,
+                f"In Hisho, open **Needs you** (or the notification on your phone) and approve Home Assistant "
+                f"if it shows the code **{self._pairing.get('code', '')}**.",
+                title="Approve Home Assistant in Hisho",
+                notification_id=self._notification_id,
+            )
         if not self._pair_task.done():
             return self.async_show_progress(
                 step_id="pair",
@@ -187,6 +207,7 @@ class HishoConfigFlow(ConfigFlow, domain=DOMAIN):
             _LOGGER.exception("Pairing with Hisho at %s failed", self._url)
             self._result = {"state": "expired"}
         self._pair_task = None
+        persistent_notification.async_dismiss(self.hass, self._notification_id)
         state = self._result.get("state")
         if state == "approved" and self._result.get("token"):
             return self.async_show_progress_done(next_step_id="paired")
