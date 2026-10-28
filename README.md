@@ -64,7 +64,7 @@ Core down or an open-ended one lasts more than 12 hours. Its "Notify action" is 
 Hisho keeps what everyone asks it through Assist or `hisho.ask` for 30 days (its own record on Core:
 who asked, the room, the time, the question and the spoken reply, including timeouts and errors; the
 number of days is Hisho's Fleet.yaml `home_assistant.assistant.keep_days`). Home Assistant's admins see
-them on the Hisho dashboard's **Conversations** view (hisho-ha-cards 0.8 or later), in Hisho's owner time
+them on the Hisho dashboard's **Conversations** view (hisho-ha-cards 0.6.0 or later), in Hisho's owner time
 zone; tap one for the transcript, delete one with its button. Anyone else gets *unauthorized*, like the
 services below. The view uses three admin-only websocket commands:
 `hisho/conversations/list` (`person`, `limit`), `hisho/conversations/get` and
