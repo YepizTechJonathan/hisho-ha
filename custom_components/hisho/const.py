@@ -14,6 +14,7 @@ SNAPSHOT_PATH: Final = "/api/ha/snapshot"
 PAIR_PATH: Final = "/api/ha/pair"
 ACTION_PATH: Final = "/api/ha/action"
 CONVERSE_PATH: Final = "/api/ha/converse"
+CONVERSATIONS_PATH: Final = "/api/ha/conversations"
 # Fable thinking hard can take ten minutes (Hisho's own limit); give it a little more.
 CONVERSE_TIMEOUT: Final = 630
 # Hisho forgets a pairing request after ten minutes; give up a little before.

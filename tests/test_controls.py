@@ -427,3 +427,5 @@ async def test_scripts_can_ask_hisho(hass: HomeAssistant, hisho: AiohttpClientMo
     await setup_entry(hass, config_entry)
     response = await hass.services.async_call(DOMAIN, "ask", {"text": "what needs me?"}, blocking=True, return_response=True)
     assert response["reply"] == "Nothing urgent."
+    sent = next(c[2] for c in hisho.mock_calls if str(c[1]).endswith("/api/ha/converse"))
+    assert sent["via"] == "service"  # Hisho's conversation history marks it as an automation's

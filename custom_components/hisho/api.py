@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from urllib.parse import quote, urlencode
 
 import aiohttp
 
 from .const import (
     ACTION_PATH,
+    CONVERSATIONS_PATH,
     CONVERSE_PATH,
     CONVERSE_TIMEOUT,
     PAIR_PATH,
@@ -149,3 +151,25 @@ class HishoClient:
             raise HishoActionError(status, str(detail or f"HTTP {status}"))
         return data
 
+
+    async def _conversations(self, method: str, path: str) -> dict[str, Any]:
+        status, data = await self._request(method, CONVERSATIONS_PATH + path)
+        if status == 401:
+            raise HishoAuthError
+        if status != 200 or not isinstance(data, dict):
+            detail = data.get("detail") if isinstance(data, dict) else None
+            raise HishoActionError(status, str(detail or f"HTTP {status}"))
+        return data
+
+    async def async_conversations(self, person: str | None = None, limit: int = 100) -> dict[str, Any]:
+        """The conversations people had with Hisho here, newest first: {conversations, timezone, keep_days}."""
+        query = {"limit": limit} | ({"person": person} if person else {})
+        return await self._conversations("GET", "?" + urlencode(query))
+
+    async def async_conversation(self, conversation_id: str) -> dict[str, Any]:
+        """One conversation's transcript."""
+        return await self._conversations("GET", "/" + quote(conversation_id, safe=""))
+
+    async def async_delete_conversation(self, conversation_id: str) -> dict[str, Any]:
+        """Delete one conversation (Hisho journals it)."""
+        return await self._conversations("DELETE", "/" + quote(conversation_id, safe=""))

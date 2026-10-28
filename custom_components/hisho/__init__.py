@@ -19,6 +19,7 @@ from .const import DOMAIN
 from .coordinator import HishoConfigEntry, HishoCoordinator
 from .entity import hub_device_info
 from .services import async_setup_services
+from .websocket import async_setup_websocket
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
@@ -78,8 +79,10 @@ async def async_load_cards_early(hass: HomeAssistant) -> str | None:
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register Hisho's services (once, for every entry), serve the dashboard's pictures, load the cards early."""
+    """Register Hisho's services and admin websocket commands (once, for every entry), serve the dashboard's
+    pictures, load the cards early."""
     async_setup_services(hass)
+    async_setup_websocket(hass)
     await async_serve_static(hass)
     await async_load_cards_early(hass)
     return True

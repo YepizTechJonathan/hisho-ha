@@ -143,7 +143,8 @@ def async_setup_services(hass: HomeAssistant) -> None:
                     "is_admin": bool(found and found.is_admin)}
         try:
             return await coordinator.client.async_converse(
-                {"text": call.data["text"], "conversation_id": call.data.get("conversation_id"), "user": user}
+                {"text": call.data["text"], "conversation_id": call.data.get("conversation_id"), "user": user,
+                 "via": "service"}
             )
         except HishoError as err:
             raise HomeAssistantError(str(err) or type(err).__name__) from err
