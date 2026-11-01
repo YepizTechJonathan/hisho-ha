@@ -122,7 +122,13 @@ async def test_core_services_sit_on_the_core_machine(
     assert core.attributes["friendly_name"] == "Kihon hisho-core"
     assert core.attributes["device_class"] == "running"
     assert core.attributes["unit"] == "hisho-fluent.service"
-    assert _state(hass, "binary_sensor", "kihon_service_hisho-yepiz-backup") == STATE_OFF
+    assert "kind" not in core.attributes            # a systemd unit: unit and state only
+    backup = hass.states.get(_entity_id(hass, "binary_sensor", "kihon_service_hisho-yepiz-backup"))
+    assert backup.state == STATE_OFF
+    # a job Semaphore runs: the card shows how its last run went and when
+    assert backup.attributes["kind"] == "scheduled"
+    assert backup.attributes["last_run"] == "2026-11-01T04:10:17+00:00"
+    assert backup.attributes["state"] == "last run failed (Oct 31 9:10 PM)"
 
 
 async def test_a_sleeping_machine_is_off_with_its_readings_unavailable(

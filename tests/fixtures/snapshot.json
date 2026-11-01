@@ -51,7 +51,9 @@
      "name": "hisho-yepiz-backup",
      "unit": "hisho-yepiz-backup.service",
      "running": false,
-     "state": "failed"
+     "state": "last run failed (Oct 31 9:10 PM)",
+     "kind": "scheduled",
+     "last_run": "2026-11-01T04:10:17+00:00"
     }
    ]
   },

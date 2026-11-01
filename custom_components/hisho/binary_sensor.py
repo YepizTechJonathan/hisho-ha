@@ -214,9 +214,12 @@ class HishoServiceSensor(HishoMachineEntity, BinarySensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """The systemd unit and its state."""
+        """The systemd unit and its state; a job Semaphore runs also says so and when its last run ended."""
         service = self._service or {}
-        return {"unit": service.get("unit"), "state": service.get("state")}
+        attrs = {"unit": service.get("unit"), "state": service.get("state")}
+        if service.get("kind"):
+            attrs.update(kind=service["kind"], last_run=service.get("last_run"))
+        return attrs
 
 
 class HishoCoreReachable(HishoEntity, BinarySensorEntity):
