@@ -45,6 +45,12 @@
         "state": {
           "off": "mdi:check-circle-outline"
         }
+      },
+      "trust_window": {
+        "default": "mdi:shield-lock",
+        "state": {
+          "on": "mdi:shield-lock-open"
+        }
       }
     },
     "sensor": {
@@ -149,6 +155,22 @@
       },
       "addon_updates": {
         "default": "mdi:package-up"
+      },
+      "souko_check": {
+        "default": "mdi:clipboard-check",
+        "state": {
+          "problems": "mdi:clipboard-alert",
+          "running": "mdi:clipboard-clock"
+        }
+      },
+      "backup_last_good": {
+        "default": "mdi:backup-restore"
+      },
+      "approvals_waiting": {
+        "default": "mdi:stamper"
+      },
+      "logins_not_in_vault": {
+        "default": "mdi:shield-key"
       }
     },
     "button": {
@@ -175,6 +197,15 @@
       },
       "addon_action": {
         "default": "mdi:play"
+      },
+      "check_souko": {
+        "default": "mdi:clipboard-check"
+      },
+      "trust_end": {
+        "default": "mdi:shield-lock"
+      },
+      "move_to_core": {
+        "default": "mdi:truck-delivery"
       }
     },
     "switch": {
@@ -249,6 +280,9 @@
     },
     "ask": {
       "service": "mdi:chat-question"
+    },
+    "trust_start": {
+      "service": "mdi:shield-lock-open"
     }
   }
 }

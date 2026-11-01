@@ -39,7 +39,10 @@ HUB_BUTTONS = (
     HishoButtonDescription(
         key="reap_jobs", translation_key="reap_jobs", action="jobs.reap", entity_category=EntityCategory.CONFIG
     ),
+    HishoButtonDescription(key="check_souko", translation_key="check_souko", action="check.run"),
+    HishoButtonDescription(key="trust_end", translation_key="trust_end", action="trust.end"),
 )
+MOVE = HishoButtonDescription(key="move_to_core", translation_key="move_to_core", action="companion.move", danger=True)
 WAKE = HishoButtonDescription(key="wake", translation_key="wake", action="machine.wake")
 PARK = HishoButtonDescription(key="park", translation_key="park", action="machine.park", danger=True)
 
@@ -105,6 +108,10 @@ async def async_setup_entry(
             for name, addon in data.addons.items():
                 for act in addon.get("actions") or []:
                     add(f"addon:{name}:{act['id']}", HishoAddonActionButton(coordinator, name, act))
+        if data.can(MOVE.action):
+            for co in data.raw.get("companions") or []:
+                if co.get("move_to") and co.get("addon") in data.addons:
+                    add(f"addon:{co['addon']}:{MOVE.key}", HishoMoveButton(coordinator, co["addon"], co["move_to"]))
         if new:
             async_add_entities(new)
 
@@ -203,3 +210,24 @@ class HishoAddonActionButton(_Press, HishoAddonEntity, ButtonEntity):
         self._attr_translation_placeholders = {"action": act.get("label") or act["id"]}
         self._attr_entity_registry_enabled_default = not desc.danger
         self._target, self._args = name, {"action": act["id"]}
+
+
+class HishoMoveButton(_Press, HishoAddonEntity, ButtonEntity):
+    """Move to Kihon: a service Hisho installed before the Core machine existed goes there, data and logins with
+    it; the old copy is only stopped. Created disabled, like the dashboard's confirm."""
+
+    entity_description = MOVE
+
+    def __init__(self, coordinator: HishoCoordinator, name: str, to: str) -> None:
+        """Set up the button."""
+        super().__init__(coordinator, name, MOVE.key)
+        self._attr_translation_placeholders = {"to": to.title()}
+        self._attr_entity_registry_enabled_default = False
+        self._target, self._args = name, {}
+
+    @property
+    def available(self) -> bool:
+        """Only while there is something to move."""
+        return super().available and any(
+            c.get("addon") == self.addon_name and c.get("move_to") for c in self.coordinator.data.raw.get("companions") or []
+        )

@@ -80,6 +80,9 @@
       },
       "critical_alert": {
         "name": "Critical alert"
+      },
+      "trust_window": {
+        "name": "Trust window"
       }
     },
     "sensor": {
@@ -217,6 +220,23 @@
       "addon_updates": {
         "name": "Add-on updates",
         "unit_of_measurement": "updates"
+      },
+      "souko_check": {
+        "name": "Check my Souko",
+        "state": {
+          "passed": "All passed",
+          "problems": "Needs a look",
+          "running": "Checking"
+        }
+      },
+      "backup_last_good": {
+        "name": "Last good backup"
+      },
+      "approvals_waiting": {
+        "name": "Approvals waiting"
+      },
+      "logins_not_in_vault": {
+        "name": "Logins not in the password vault"
       }
     },
     "button": {
@@ -243,6 +263,15 @@
       },
       "addon_action": {
         "name": "{action}"
+      },
+      "check_souko": {
+        "name": "Check my Souko"
+      },
+      "trust_end": {
+        "name": "End trust window"
+      },
+      "move_to_core": {
+        "name": "Move to {to}"
       }
     },
     "switch": {
@@ -485,6 +514,24 @@
         "conversation_id": {
           "name": "Conversation",
           "description": "Pass the same id to follow up."
+        }
+      }
+    },
+    "trust_start": {
+      "name": "Open the trust window",
+      "description": "Let Claude Code act without asking on the chosen machines for 15, 30 or 60 minutes; it ends by itself, and Hisho's journal names you. Until-I-end-it is on Hisho's dashboard only.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hisho",
+          "description": "Which Hisho, when more than one is set up."
+        },
+        "minutes": {
+          "name": "Minutes",
+          "description": "How long: 15, 30 or 60."
+        },
+        "machines": {
+          "name": "Machines",
+          "description": "Which machines (their Hisho names). Empty: the machine Hisho's Core runs on."
         }
       }
     }

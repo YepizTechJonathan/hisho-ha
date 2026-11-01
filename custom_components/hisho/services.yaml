@@ -124,3 +124,18 @@ ask:
     conversation_id:
       selector:
         text:
+trust_start:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: hisho
+    minutes:
+      default: 30
+      selector:
+        select:
+          options: ["15", "30", "60"]
+    machines:
+      selector:
+        text:
+          multiple: true

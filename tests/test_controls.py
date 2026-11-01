@@ -429,3 +429,51 @@ async def test_scripts_can_ask_hisho(hass: HomeAssistant, hisho: AiohttpClientMo
     assert response["reply"] == "Nothing urgent."
     sent = next(c[2] for c in hisho.mock_calls if str(c[1]).endswith("/api/ha/converse"))
     assert sent["via"] == "service"  # Hisho's conversation history marks it as an automation's
+
+
+async def test_setup_parity_with_the_dashboard(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, config_entry: MockConfigEntry,
+    snapshot_data: dict[str, Any], hass_admin_user,
+) -> None:
+    """Check my Souko, the backup, Approvals, the vault and the trust window, as on Hisho's dashboard (Core
+    surfaces.py); Move to Kihon on the add-on, disabled like the dashboard's confirm."""
+    from homeassistant.core import Context
+
+    snapshot_data["allowed"] += ["check.run", "trust.start", "trust.end", "companion.move"]
+    snapshot_data["souko_check"] = {"at": "2026-11-01T03:00:00+00:00", "ok": False, "passed": 9, "failed": 1,
+                                    "checks": [{"name": "Logins in your password vault", "ok": False,
+                                                "detail": "1 login not in Vaultwarden yet", "fix": "Save to Vaultwarden"}]}
+    snapshot_data["backup"] = {"at": "2026-11-01T02:00:00+00:00", "ok": True, "last_good": "2026-11-01T02:00:00+00:00"}
+    snapshot_data["approvals"] = [{"id": "a1", "title": "Reply to Randy", "company": "YepizTech", "status": "waiting"}]
+    snapshot_data["vault"] = [{"title": "Forgejo", "where": "infisical", "saved_in": [], "waiting": ["vaultwarden"]},
+                              {"title": "Semaphore", "where": "infisical", "saved_in": ["Vaultwarden"], "waiting": []}]
+    snapshot_data["trust"] = {"open": True, "until": "2026-11-01T03:30:00+00:00", "machines": ["souko"], "here": "souko"}
+    snapshot_data["companions"] = [{"addon": "email", "title": "Email", "on": "souko", "move_to": "kihon"}]
+    aioclient_mock.get(SNAPSHOT_URL, json=snapshot_data)
+    aioclient_mock.post(ACTION_URL, json={"ok": True})
+    await setup_entry(hass, config_entry)
+
+    check = hass.states.get(_eid(hass, "sensor", "souko_check"))
+    assert check.state == "problems" and check.attributes["checks"][0]["fix"] == "Save to Vaultwarden"
+    assert hass.states.get(_eid(hass, "sensor", "backup_last_good")).state == "2026-11-01T02:00:00+00:00"
+    assert hass.states.get(_eid(hass, "sensor", "approvals_waiting")).state == "1"
+    assert hass.states.get(_eid(hass, "sensor", "logins_not_in_vault")).state == "1"
+    trust = hass.states.get(_eid(hass, "binary_sensor", "trust_window"))
+    assert trust.state == STATE_ON and trust.attributes["until"] == "2026-11-01T03:30:00+00:00"
+
+    for key in ("check_souko", "trust_end"):
+        await hass.services.async_call("button", "press", {"entity_id": _eid(hass, "button", key)}, blocking=True)
+    move = _eid(hass, "button", "addon_email_move_to_core")
+    assert er.async_get(hass).async_get(move).disabled_by is not None
+    await hass.services.async_call(DOMAIN, "trust_start", {"minutes": 15}, blocking=True,
+                                   context=Context(user_id=hass_admin_user.id))
+    with pytest.raises(Exception):
+        await hass.services.async_call(DOMAIN, "trust_start", {"minutes": 120}, blocking=True)
+    await _enable(hass, move, config_entry)
+    assert hass.states.get(move).attributes["friendly_name"] == "Email Move to Kihon"
+    await hass.services.async_call("button", "press", {"entity_id": move}, blocking=True)
+    sent = [a for a in _actions(aioclient_mock) if a["action"] in ("check.run", "trust.end", "trust.start", "companion.move")]
+    assert sent[0]["action"] == "check.run" and sent[1]["action"] == "trust.end"
+    assert sent[2] == {"action": "trust.start", "target": "", "confirm": True,
+                       "args": {"minutes": 15, "machines": [], "user": hass_admin_user.name}}
+    assert sent[3] == {"action": "companion.move", "target": "email", "args": {}, "confirm": True}
