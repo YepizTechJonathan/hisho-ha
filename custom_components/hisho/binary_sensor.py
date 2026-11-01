@@ -77,7 +77,7 @@ async def async_setup_entry(
     """Add the hub's sync sensor, then machines, services and peers as they appear."""
     coordinator = entry.runtime_data
     async_add_entities([HishoSyncProblem(coordinator), HishoCoreReachable(coordinator), HishoCoreMaintenance(coordinator),
-                        HishoCritical(coordinator)])
+                        HishoCritical(coordinator), HishoTrustWindow(coordinator)])
     known: set[str] = set()
 
     @callback
@@ -348,3 +348,29 @@ class HishoCritical(HishoEntity, BinarySensorEntity):
         """Which."""
         return {"alerts": [a.get("title") for a in self._open()]}
 
+
+class HishoTrustWindow(HishoEntity, BinarySensorEntity):
+    """On while Claude Code may act without asking on Hisho's Core machine (the trust window). It ends by itself;
+    the "End trust window" button ends it now."""
+
+    _attr_translation_key = "trust_window"
+
+    def __init__(self, coordinator: HishoCoordinator) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, "trust_window")
+
+    @property
+    def available(self) -> bool:
+        """Unavailable from a Core without the trust window."""
+        return super().available and "trust" in self.coordinator.data.raw
+
+    @property
+    def is_on(self) -> bool:
+        """Open now."""
+        return bool((self.coordinator.data.raw.get("trust") or {}).get("open"))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Until when, and the machines it can be opened on."""
+        trust = self.coordinator.data.raw.get("trust") or {}
+        return {k: trust.get(k) for k in ("until", "always", "seconds_left", "machines", "here")}

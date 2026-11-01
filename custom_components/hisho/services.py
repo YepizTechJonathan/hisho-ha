@@ -70,6 +70,15 @@ CREATE_JOB_SCHEMA = vol.Schema(
 )
 
 
+TRUST_SCHEMA = vol.Schema(
+    {
+        **BASE,
+        # Timed only from Home Assistant: a press nobody remembers mustn't leave it open (until-I-end-it is on the
+        # dashboard).
+        vol.Optional("minutes", default=30): vol.All(vol.Coerce(int), vol.In([15, 30, 60])),
+        vol.Optional("machines", default=[]): vol.All(cv.ensure_list, [cv.string]),
+    }
+)
 ASK_SCHEMA = vol.Schema(
     {**BASE, vol.Required("text"): cv.string, vol.Optional("conversation_id"): cv.string}
 )
@@ -149,6 +158,15 @@ def async_setup_services(hass: HomeAssistant) -> None:
         except HishoError as err:
             raise HomeAssistantError(str(err) or type(err).__name__) from err
 
+    async def trust_start(call: ServiceCall) -> ServiceResponse:
+        args: dict[str, Any] = {"minutes": call.data["minutes"], "machines": call.data["machines"]}
+        if call.context.user_id:
+            found = await hass.auth.async_get_user(call.context.user_id)
+            if found:
+                args["user"] = found.name           # Hisho's journal: "Home Assistant user <name>" opened it
+        return _response(await _coordinator(hass, call).async_action("trust.start", "", args, confirm=True,
+                                                                     context=call.context))
+
     for name, handler, schema in (
         ("run_action", run_action, RUN_ACTION_SCHEMA),
         ("alert", alert, ALERT_SCHEMA),
@@ -156,6 +174,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
         ("job", job, JOB_SCHEMA),
         ("create_job", create_job, CREATE_JOB_SCHEMA),
         ("ask", ask, ASK_SCHEMA),
+        ("trust_start", trust_start, TRUST_SCHEMA),
     ):
         # Admins only (Jonathan, 2026-10-26); automations and scripts still call them.
         async_register_admin_service(

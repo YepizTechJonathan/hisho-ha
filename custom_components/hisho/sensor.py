@@ -36,6 +36,14 @@ def _timestamp(value: Any) -> datetime | None:
     return dt_util.parse_datetime(value) if isinstance(value, str) else None
 
 
+def _souko_check(check: dict[str, Any] | None) -> str | None:
+    if not check or check.get("applies") is False:
+        return None
+    if check.get("running"):
+        return "running"
+    return "passed" if check.get("ok") else "problems"
+
+
 @dataclass(frozen=True, kw_only=True)
 class HishoHubSensorDescription(SensorEntityDescription):
     """A reading of the whole fleet."""
@@ -116,6 +124,33 @@ HUB_SENSORS: tuple[HishoHubSensorDescription, ...] = (
         translation_key="done_for_you",
         # What Hisho did on its own in the last day (Core 2026-10-26+); unavailable from an older Core.
         value_fn=lambda d: len(d.raw.get("activity") or []) if "activity" in d.raw else None,
+    ),
+    HishoHubSensorDescription(
+        key="souko_check",
+        translation_key="souko_check",
+        device_class=SensorDeviceClass.ENUM,
+        options=["passed", "problems", "running"],
+        # Check my Souko (Core 2026-11-01+): unknown until it has run once, or on a machine not from the image.
+        value_fn=lambda d: _souko_check(d.raw.get("souko_check")),
+    ),
+    HishoHubSensorDescription(
+        key="backup_last_good",
+        translation_key="backup_last_good",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda d: _timestamp((d.raw.get("backup") or {}).get("last_good")),
+    ),
+    HishoHubSensorDescription(
+        key="approvals_waiting",
+        translation_key="approvals_waiting",
+        state_class=SensorStateClass.MEASUREMENT,
+        # Shown here, decided only on Hisho's dashboard (Approve is bound to the payload the owner reads there).
+        value_fn=lambda d: len(d.raw.get("approvals") or []) if "approvals" in d.raw else None,
+    ),
+    HishoHubSensorDescription(
+        key="logins_not_in_vault",
+        translation_key="logins_not_in_vault",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: sum(1 for r in d.raw.get("vault") or [] if r.get("waiting")) if "vault" in d.raw else None,
     ),
     HishoHubSensorDescription(
         key="sync_conflicts",
@@ -269,7 +304,8 @@ class HishoHubSensor(HishoEntity, SensorEntity):
     """A fleet-wide reading."""
 
     # Lists for cards: shown, not kept in history (they would fill the recorder).
-    _unrecorded_attributes = frozenset({"jobs", "projects", "alerts", "allowed", "store", "repositories", "items"})
+    _unrecorded_attributes = frozenset({"jobs", "projects", "alerts", "allowed", "store", "repositories", "items",
+                                        "checks", "approvals", "logins"})
 
     entity_description: HishoHubSensorDescription
 
@@ -305,6 +341,16 @@ class HishoHubSensor(HishoEntity, SensorEntity):
             return {"store": data.raw.get("store") or [], "repositories": data.raw.get("repositories") or []}
         if key == "done_for_you":
             return {"items": [{k: i.get(k) for k in ("at", "event", "text")} for i in data.raw.get("activity") or []]}
+        if key == "souko_check":
+            check = data.raw.get("souko_check") or {}
+            return {"at": check.get("at"), "passed": check.get("passed"), "failed": check.get("failed"),
+                    "checks": check.get("checks") or []}
+        if key == "backup_last_good":
+            return {k: (data.raw.get("backup") or {}).get(k) for k in ("at", "ok", "error")}
+        if key == "approvals_waiting":
+            return {"approvals": data.raw.get("approvals") or []}
+        if key == "logins_not_in_vault":
+            return {"logins": data.raw.get("vault") or []}
         if key == "projects_active":
             return {"projects": [{k: p.get(k) for k in ("name", "title", "company", "status", "waiting_on", "next", "asks")}
                                  for p in data.raw.get("projects") or []]}
