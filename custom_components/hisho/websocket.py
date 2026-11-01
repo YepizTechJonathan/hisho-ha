@@ -3,6 +3,10 @@
 Hisho keeps each one 30 days (its own record, ``GET/DELETE /api/ha/conversations`` on Core). Any
 person's conversation can hold an admin's answer, so like Hisho's services (1.3.0) these commands are
 admins only: everyone else gets *unauthorized*. The Hisho dashboard's Conversations view uses them.
+
+``hisho/conversations/continue`` picks one up again (Hisho sometimes asks for something you don't have at
+hand): it answers as the user sending it, and Hisho lets only the person who had the conversation continue it
+(anyone else's is read-only: *not_allowed*). The answer goes into the same saved conversation.
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_list)
     websocket_api.async_register_command(hass, ws_get)
     websocket_api.async_register_command(hass, ws_delete)
+    websocket_api.async_register_command(hass, ws_continue)
 
 
 def _coordinator(hass: HomeAssistant, entry_id: str | None) -> HishoCoordinator | None:
@@ -98,3 +103,21 @@ async def ws_get(hass: HomeAssistant, connection: websocket_api.ActiveConnection
 async def ws_delete(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
     """Delete one conversation (Hisho journals it)."""
     await _answer(hass, connection, msg, lambda c: c.async_delete_conversation(msg["conversation_id"]))
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "hisho/conversations/continue",
+        ENTRY: str,
+        vol.Required("conversation_id"): str,
+        vol.Required("text"): vol.All(str, vol.Length(min=1, max=4000)),
+    }
+)
+@websocket_api.async_response
+async def ws_continue(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Continue one of your own saved conversations: Hisho's answer, also added to that conversation."""
+    user = connection.user
+    body = {"text": msg["text"], "continue": msg["conversation_id"], "via": "page", "language": hass.config.language,
+            "user": {"id": user.id, "name": user.name, "is_admin": user.is_admin}}
+    await _answer(hass, connection, msg, lambda c: c.async_converse(body))

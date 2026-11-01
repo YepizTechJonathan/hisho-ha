@@ -66,10 +66,19 @@ who asked, the room, the time, the question and the spoken reply, including time
 number of days is Hisho's Fleet.yaml `home_assistant.assistant.keep_days`). Home Assistant's admins see
 them on the Hisho dashboard's **Conversations** view (hisho-ha-cards 0.6.0 or later), in Hisho's owner time
 zone; tap one for the transcript, delete one with its button. Anyone else gets *unauthorized*, like the
-services below. The view uses three admin-only websocket commands:
-`hisho/conversations/list` (`person`, `limit`), `hisho/conversations/get` and
-`hisho/conversations/delete` (`conversation_id`); each takes `config_entry_id` when there is more than
-one Hisho. Hisho needs this Home Assistant to have the *operate* scope (Assist needs it too).
+services below.
+
+**Pick one up again** when Hisho asked for something you didn't have at hand: open it and type in its
+**Continue** box (hisho-ha-cards 0.8.0 or later), or just say so to Assist: "pick up where we left off",
+"continue our last conversation", "about that question earlier" (your latest one; with "question", the
+latest where Hisho asked you something). The answer goes into the same conversation. Only the person who
+had a conversation can continue it; admins can read everyone's, but someone else's is read-only.
+
+The view uses four admin-only websocket commands: `hisho/conversations/list` (`person`, `limit`),
+`hisho/conversations/get`, `hisho/conversations/delete` (`conversation_id`) and
+`hisho/conversations/continue` (`conversation_id`, `text`; answers as the user sending it); each takes
+`config_entry_id` when there is more than one Hisho. Hisho needs this Home Assistant to have the *operate*
+scope (Assist needs it too).
 
 ## Services
 

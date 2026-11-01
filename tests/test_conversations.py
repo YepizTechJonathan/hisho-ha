@@ -109,3 +109,37 @@ async def test_no_hisho_set_up(hass: HomeAssistant, hass_ws_client) -> None:
     ws = await hass_ws_client(hass)
     await ws.send_json_auto_id({"type": "hisho/conversations/list"})
     assert (await ws.receive_json())["error"]["code"] == "not_found"
+
+
+async def test_admins_continue_their_own_conversation_as_themselves(
+    hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry, hass_ws_client, hass_admin_user,
+) -> None:
+    """The Continue box: Hisho gets who is typing; it answers only that person's own conversation."""
+    hisho.post(URL + "/api/ha/converse", json={"ok": True, "reply": "Got it, 4417.", "transcript_id": CID,
+                                                "picked_up": True})
+    await setup_entry(hass, config_entry)
+    ws = await hass_ws_client(hass)
+    await ws.send_json_auto_id({"type": "hisho/conversations/continue", "conversation_id": CID,
+                                "text": "the code is 4417"})
+    reply = await ws.receive_json()
+    assert reply["success"] and reply["result"]["reply"] == "Got it, 4417."
+    sent = next(c[2] for c in hisho.mock_calls if str(c[1]).endswith("/api/ha/converse"))
+    assert sent["continue"] == CID and sent["text"] == "the code is 4417" and sent["via"] == "page"
+    assert sent["user"] == {"id": hass_admin_user.id, "name": hass_admin_user.name, "is_admin": True}
+
+
+async def test_someone_elses_conversation_is_read_only(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, snapshot_data: dict[str, Any],
+    config_entry: MockConfigEntry, hass_ws_client, hass_read_only_access_token: str,
+) -> None:
+    aioclient_mock.get(SNAPSHOT_URL, json=snapshot_data)
+    aioclient_mock.post(URL + "/api/ha/converse", status=403,
+                        json={"detail": "only Ana can continue this conversation"})
+    await setup_entry(hass, config_entry)
+    ws = await hass_ws_client(hass)
+    await ws.send_json_auto_id({"type": "hisho/conversations/continue", "conversation_id": CID, "text": "hi"})
+    assert (await ws.receive_json())["error"] == {"code": "not_allowed",
+                                                   "message": "only Ana can continue this conversation"}
+    other = await hass_ws_client(hass, hass_read_only_access_token)   # and a non-admin can't even ask
+    await other.send_json_auto_id({"type": "hisho/conversations/continue", "conversation_id": CID, "text": "hi"})
+    assert (await other.receive_json())["error"]["code"] == "unauthorized"
