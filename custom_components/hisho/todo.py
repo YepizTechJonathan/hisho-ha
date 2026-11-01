@@ -15,7 +15,7 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import DOMAIN
-from .coordinator import HishoConfigEntry, HishoCoordinator
+from .coordinator import HishoConfigEntry, HishoCoordinator, HishoData
 from .entity import HishoEntity
 
 PARALLEL_UPDATES = 1
@@ -82,7 +82,17 @@ class HishoNeedsYou(HishoEntity, TodoListEntity):
         if item.uid not in self.coordinator.data.alerts:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="alert_gone")
         verb = "ack" if item.status == TodoItemStatus.COMPLETED else "unack"
-        await self.coordinator.async_action(f"alert.{verb}", item.uid, context=self._context)
+
+        def applied(data: HishoData) -> None:
+            alert = data.alerts.get(item.uid)
+            if alert is None:
+                return
+            if verb == "ack":
+                alert["muted"] = {"state": "ack"}
+            else:
+                alert.pop("muted", None)
+
+        await self.coordinator.async_action(f"alert.{verb}", item.uid, context=self._context, applied=applied)
 
 
 def _task_uid(text: str) -> str:
@@ -125,7 +135,15 @@ class HishoToday(HishoEntity, TodoListEntity):
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
         """A new task at the end of Tasks."""
-        await self.coordinator.async_action("task.add", "", {"text": item.summary or ""}, context=self._context)
+        text = " ".join((item.summary or "").split())
+
+        def applied(data: HishoData) -> None:
+            tasks = (data.raw.setdefault("today", {})).setdefault("tasks", [])
+            if not any(t["text"] == text and not t.get("done") for t in tasks):
+                tasks.append({"text": text, "done": False})
+
+        await self.coordinator.async_action("task.add", "", {"text": item.summary or ""}, context=self._context,
+                                            applied=applied)
 
     async def async_update_todo_item(self, item: TodoItem) -> None:
         """Ticked or unticked (renaming is done in the note itself)."""
@@ -135,5 +153,12 @@ class HishoToday(HishoEntity, TodoListEntity):
         if item.summary and item.summary != task["text"]:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="task_rename")
         verb = "done" if item.status == TodoItemStatus.COMPLETED else "undone"
-        await self.coordinator.async_action(f"task.{verb}", "", {"text": task["text"]}, context=self._context)
+
+        def applied(data: HishoData) -> None:
+            for t in (data.raw.get("today") or {}).get("tasks") or []:
+                if t["text"] == task["text"]:
+                    t["done"] = verb == "done"
+
+        await self.coordinator.async_action(f"task.{verb}", "", {"text": task["text"]}, context=self._context,
+                                            applied=applied)
 

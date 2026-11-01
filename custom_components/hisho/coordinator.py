@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging
@@ -142,11 +143,14 @@ class HishoCoordinator(DataUpdateCoordinator[HishoData]):
         args: dict[str, Any] | None = None,
         confirm: bool = False,
         context: Context | None = None,
+        applied: Callable[[HishoData], None] | None = None,
     ) -> Any:
         """Press one of Hisho's controls, then refresh so the result shows at once.
 
         Hisho's controls are for Home Assistant admins (Jonathan, 2026-10-26): a press by
         a non-admin user is refused. Automations and scripts (no user) still run them.
+        ``applied`` writes what Hisho just confirmed into the current data, so a ticked
+        to-do shows ticked right away: Core's snapshot can take ~20 s to rebuild.
         """
         if context is not None and context.user_id:
             user = await self.hass.auth.async_get_user(context.user_id)
@@ -172,6 +176,9 @@ class HishoCoordinator(DataUpdateCoordinator[HishoData]):
                 translation_key="cannot_connect",
                 translation_placeholders={"error": str(err) or type(err).__name__},
             ) from err
+        if applied is not None and self.data is not None:
+            applied(self.data)
+            self.async_update_listeners()
         await self.async_request_refresh()
         return result
 

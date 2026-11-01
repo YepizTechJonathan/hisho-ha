@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 import json
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 from freezegun.api import FrozenDateTimeFactory
 import pytest
@@ -352,6 +353,41 @@ async def test_today_list_adds_and_ticks(hass: HomeAssistant, hisho: AiohttpClie
     with pytest.raises(ServiceValidationError):
         await hass.services.async_call(
             "todo", "update_item", {"entity_id": entity_id, "item": "Call the bank", "rename": "x"}, blocking=True)
+
+
+async def test_today_tick_shows_before_the_refresh(hass: HomeAssistant, hisho: AiohttpClientMocker,
+                                                   config_entry: MockConfigEntry) -> None:
+    """A tick shows at once: Core's snapshot can take ~20 s to rebuild, and the card waits on the list's state."""
+    await setup_entry(hass, config_entry)
+    entity_id = _eid(hass, "todo", "today")
+    seen: list[str] = []
+
+    async def slow_refresh() -> None:  # what HA shows while Core is still rebuilding its snapshot
+        seen.append(hass.states.get(entity_id).state)
+
+    with patch.object(config_entry.runtime_data, "async_request_refresh", slow_refresh):
+        await hass.services.async_call(
+            "todo", "update_item", {"entity_id": entity_id, "item": "Call the bank", "status": "completed"},
+            blocking=True)
+        await hass.services.async_call("todo", "add_item", {"entity_id": entity_id, "item": "Pay rent"}, blocking=True)
+    assert seen == ["0", "1"]
+    items = (await hass.services.async_call(
+        "todo", "get_items", {"entity_id": entity_id, "status": "needs_action"}, blocking=True,
+        return_response=True))[entity_id]["items"]
+    assert [i["summary"] for i in items] == ["Pay rent"]
+
+
+async def test_needs_you_ack_shows_before_the_refresh(hass: HomeAssistant, hisho: AiohttpClientMocker,
+                                                      config_entry: MockConfigEntry) -> None:
+    """Acknowledging a needs-you item ticks it at once too."""
+    await setup_entry(hass, config_entry)
+    entity_id = _eid(hass, "todo", "needs_you")
+    before = int(hass.states.get(entity_id).state)
+    with patch.object(config_entry.runtime_data, "async_request_refresh", AsyncMock()):
+        await hass.services.async_call(
+            "todo", "update_item", {"entity_id": entity_id, "item": "d2eb836753a0", "status": "completed"},
+            blocking=True)
+    assert int(hass.states.get(entity_id).state) == before - 1
 
 
 async def test_due_dates_calendar(hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry,
