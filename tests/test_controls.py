@@ -485,12 +485,16 @@ async def test_setup_parity_with_the_dashboard(
                               {"title": "Semaphore", "where": "infisical", "saved_in": ["Vaultwarden"], "waiting": []}]
     snapshot_data["trust"] = {"open": True, "until": "2026-11-01T03:30:00+00:00", "machines": ["souko"], "here": "souko"}
     snapshot_data["companions"] = [{"addon": "email", "title": "Email", "on": "souko", "move_to": "kihon"}]
+    snapshot_data["image_gate"] = {"image": "hisho-souko-omarchy-20261103f", "ok": False, "passed": 305, "failed": 4,
+                                   "failed_checks": ["With a Kihon: Forgejo works"], "at": 1793721153.9}
     aioclient_mock.get(SNAPSHOT_URL, json=snapshot_data)
     aioclient_mock.post(ACTION_URL, json={"ok": True})
     await setup_entry(hass, config_entry)
 
     check = hass.states.get(_eid(hass, "sensor", "souko_check"))
     assert check.state == "problems" and check.attributes["checks"][0]["fix"] == "Save to Vaultwarden"
+    image = hass.states.get(_eid(hass, "sensor", "image_test"))
+    assert image.state == "failed" and image.attributes["failed_checks"] == ["With a Kihon: Forgejo works"]
     assert hass.states.get(_eid(hass, "sensor", "backup_last_good")).state == "2026-11-01T02:00:00+00:00"
     assert hass.states.get(_eid(hass, "sensor", "approvals_waiting")).state == "1"
     assert hass.states.get(_eid(hass, "sensor", "logins_not_in_vault")).state == "1"

@@ -237,6 +237,13 @@
       },
       "logins_not_in_vault": {
         "name": "Logins not in the password vault"
+      },
+      "image_test": {
+        "name": "Souko image test",
+        "state": {
+          "passed": "Passed",
+          "failed": "Failed"
+        }
       }
     },
     "button": {

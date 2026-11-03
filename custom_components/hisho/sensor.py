@@ -134,6 +134,14 @@ HUB_SENSORS: tuple[HishoHubSensorDescription, ...] = (
         value_fn=lambda d: _souko_check(d.raw.get("souko_check")),
     ),
     HishoHubSensorDescription(
+        key="image_test",
+        translation_key="image_test",
+        device_class=SensorDeviceClass.ENUM,
+        options=["passed", "failed"],
+        # The newest Souko image test (Core 2026-11-03+, image_gate): unknown until one has run on this Core.
+        value_fn=lambda d: None if not d.raw.get("image_gate") else ("passed" if d.raw["image_gate"].get("ok") else "failed"),
+    ),
+    HishoHubSensorDescription(
         key="backup_last_good",
         translation_key="backup_last_good",
         device_class=SensorDeviceClass.TIMESTAMP,
@@ -305,6 +313,7 @@ class HishoHubSensor(HishoEntity, SensorEntity):
 
     # Lists for cards: shown, not kept in history (they would fill the recorder).
     _unrecorded_attributes = frozenset({"jobs", "projects", "alerts", "allowed", "store", "repositories", "items",
+                                        "failed_checks",
                                         "checks", "approvals", "logins"})
 
     entity_description: HishoHubSensorDescription
@@ -339,6 +348,9 @@ class HishoHubSensor(HishoEntity, SensorEntity):
                              for j in data.raw.get("jobs") or []]} if key == "jobs_active" else None
         if key == "addon_updates":
             return {"store": data.raw.get("store") or [], "repositories": data.raw.get("repositories") or []}
+        if key == "image_test":
+            gate = data.raw.get("image_gate") or {}
+            return {k: gate.get(k) for k in ("image", "passed", "failed", "failed_checks", "at")} if gate else None
         if key == "done_for_you":
             return {"items": [{k: i.get(k) for k in ("at", "event", "text")} for i in data.raw.get("activity") or []]}
         if key == "souko_check":
