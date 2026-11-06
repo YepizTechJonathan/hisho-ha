@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 import json
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -416,17 +416,45 @@ async def test_my_calendar(hass: HomeAssistant, hisho: AiohttpClientMocker, conf
     state = hass.states.get(entity_id)
     assert state.attributes["friendly_name"].endswith("My calendar")
     assert state.attributes["message"] == "🟥 YepizTech: Client call" and state.attributes["location"] == "Zoom"
-    assert state.attributes["companies"] == {"PatriotPoint": "#2f80ed", "YepizTech": "#e5484d"}
+    assert state.attributes["companies"] == {"PatriotPoint": "#2f80ed", "YepizTech": "#e5484d", "Personal": "#8e4ec6"}
     assert state.attributes["problems"] == ["PatriotPoint: refused the login"]
     events = (await hass.services.async_call(
         "calendar", "get_events",
         {"entity_id": entity_id, "start_date_time": "2026-10-25 00:00:00", "end_date_time": "2026-11-05 00:00:00"},
         blocking=True, return_response=True))[entity_id]["events"]
     assert [(e["summary"], e["start"]) for e in events] == [
-        ("🟥 YepizTech: Client call", "2026-10-26T10:00:00-07:00"), ("🟥 YepizTech: Conference", "2026-10-28"),
+        ("🟥 YepizTech: Client call", "2026-10-26T10:00:00-07:00"), ("🟪 Personal: Dentist", "2026-10-27T15:00:00-07:00"),
+        ("🟥 YepizTech: Conference", "2026-10-28"),
         ("🟦 PatriotPoint: SAM.gov check", "2026-10-29T09:00:00-07:00")]
-    assert events[2]["description"] == "Company: PatriotPoint\nHisho due date"
+    assert events[3]["description"] == "Company: PatriotPoint\nHisho due date"
     assert not [s for s in hass.states.async_all("calendar") if "yepiztech" in s.entity_id]   # no calendar per company
+
+
+async def test_my_calendar_adds_changes_and_deletes_his_own_events_only(
+        hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry, freezer: FrozenDateTimeFactory) -> None:
+    """His own events go to Hisho's calendar action; a Zoho event or a due date is refused as read only."""
+    freezer.move_to("2026-10-25 12:00:00")
+    await setup_entry(hass, config_entry)
+    entity_id = _eid(hass, "calendar", "my_calendar")
+    await hass.services.async_call("calendar", "create_event", {
+        "entity_id": entity_id, "summary": "patriotpoint: SAM.gov check", "start_date_time": "2026-11-09 09:00:00",
+        "end_date_time": "2026-11-09 09:30:00", "location": "Home"}, blocking=True)
+    add = _actions(hisho)[-1]
+    assert add["action"] == "calendar.add" and add["args"]["company"] == "PatriotPoint"
+    assert add["args"]["title"] == "SAM.gov check" and add["args"]["place"] == "Home" and not add["args"]["all_day"]
+    await hass.services.async_call("calendar", "create_event", {
+        "entity_id": entity_id, "summary": "Trip", "start_date": "2026-11-20", "end_date": "2026-11-22"}, blocking=True)
+    trip = _actions(hisho)[-1]["args"]
+    assert (trip["company"], trip["all_day"], trip["start"], trip["end"]) == ("Personal", True, "2026-11-20", "2026-11-22")
+    ent = hass.data["calendar"].get_entity(entity_id)   # delete and update as HA's calendar dialog calls them
+    await ent.async_delete_event("own:abc.ics")
+    assert _actions(hisho)[-1] == {"action": "calendar.delete", "target": "abc.ics", "args": {"etag": '"7"'}}
+    await ent.async_update_event("own:abc.ics", {"summary": "Dentist (moved)", "dtstart": datetime(2026, 10, 28, 15, tzinfo=UTC),
+                                                 "dtend": datetime(2026, 10, 28, 16, tzinfo=UTC)})
+    edit = _actions(hisho)[-1]
+    assert edit["action"] == "calendar.edit" and edit["target"] == "abc.ics" and edit["args"]["etag"] == '"7"'
+    with pytest.raises(ServiceValidationError):
+        await ent.async_delete_event("call-1|2026-10-26T10:00:00-07:00")   # Zoho: read only
 
 
 async def test_addon_updates_and_phone_alerts(hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry) -> None:

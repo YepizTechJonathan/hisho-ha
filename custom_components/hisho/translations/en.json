@@ -384,6 +384,12 @@
     },
     "task_rename": {
       "message": "Rename a task in Today.md itself; here you can add and tick tasks."
+    },
+    "calendar_read_only": {
+      "message": "That event comes from Zoho or is a Hisho due date: it is read only here (change it in Zoho, or on Hisho's Businesses page)."
+    },
+    "calendar_repeating": {
+      "message": "Repeating events are made on your phone (its calendar app), not here."
     }
   },
   "services": {

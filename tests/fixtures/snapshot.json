@@ -537,6 +537,9 @@
   "alert.snooze",
   "alert.unack",
   "alerts.hide_acked",
+  "calendar.add",
+  "calendar.delete",
+  "calendar.edit",
   "device.press",
   "github.apply",
   "idea.add",
@@ -676,6 +679,11 @@
      "name": "YepizTech",
      "color": "#e5484d",
      "mark": "🟥"
+    },
+    {
+     "name": "Personal",
+     "color": "#8e4ec6",
+     "mark": "🟪"
     }
    ],
    "problems": [
@@ -697,6 +705,22 @@
      "color": "#e5484d",
      "mark": "🟥",
      "kind": "event"
+    },
+    {
+     "uid": "x@hisho",
+     "id": "abc.ics",
+     "etag": "\"7\"",
+     "title": "Dentist",
+     "start": "2026-10-27T15:00:00-07:00",
+     "end": "2026-10-27T16:00:00-07:00",
+     "all_day": false,
+     "place": "",
+     "company": "Personal",
+     "color": "#8e4ec6",
+     "mark": "🟪",
+     "kind": "own",
+     "repeating": false,
+     "notes": ""
     },
     {
      "uid": "conf",
@@ -722,7 +746,8 @@
      "mark": "🟦",
      "kind": "due"
     }
-   ]
+   ],
+   "editable": true
   }
  ]
 }

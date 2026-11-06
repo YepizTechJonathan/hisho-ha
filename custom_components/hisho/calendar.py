@@ -1,15 +1,20 @@
-"""Calendars: "My calendar" (the owner's own: every company's events and Hisho's due dates in one, each tagged with its
-company and colour; Hisho's Calendar card paints the colours) and "Due dates" (the businesses' due dates alone)."""
+"""Calendars: "My calendar" (the owner's own, kept by Hisho: his events, each Zoho calendar and Hisho's due dates in
+one, each tagged with its company and colour; Hisho's Calendar card paints the colours) and "Due dates" (the
+businesses' due dates alone). His own events can be added, changed and deleted here (Hisho's operate scope); Zoho
+events and due dates are read only."""
 
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from typing import Any
 
-from homeassistant.components.calendar import CalendarEntity, CalendarEvent
+from homeassistant.components.calendar import CalendarEntity, CalendarEntityFeature, CalendarEvent
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
+from .const import DOMAIN
 from .coordinator import HishoConfigEntry, HishoCoordinator
 from .entity import HishoEntity
 
@@ -92,7 +97,8 @@ def _my_events(raw: list[dict]) -> list[CalendarEvent]:
             continue
         company = str(ev.get("company") or "")
         lines = [f"Company: {company}" if company else None,
-                 "Hisho due date" if ev.get("kind") == "due" else None]
+                 "Hisho due date" if ev.get("kind") == "due" else "From Zoho (read only)" if ev.get("kind") == "event" else None,
+                 ev.get("notes") or None]
         events.append(
             CalendarEvent(
                 start=start,
@@ -102,7 +108,8 @@ def _my_events(raw: list[dict]) -> list[CalendarEvent]:
                                              str(ev.get("title") or "(no title)")) if x),
                 location=ev.get("place") or None,
                 description="\n".join(x for x in lines if x) or None,
-                uid=f"{ev.get('uid')}|{ev.get('start')}",
+                # the owner's own events carry Hisho's id (they can be changed); others a stable read-only key
+                uid=f"own:{ev['id']}" if ev.get("kind") == "own" and ev.get("id") else f"{ev.get('uid')}|{ev.get('start')}",
             )
         )
     return events
@@ -122,6 +129,64 @@ class HishoMyCalendar(HishoEntity, CalendarEntity):
 
     def _all(self) -> list[CalendarEvent]:
         return _my_events(list(self._cal().get("events") or []))
+
+    @property
+    def supported_features(self) -> CalendarEntityFeature:
+        """Add, change and delete need Hisho's calendar store and the operate scope."""
+        features = CalendarEntityFeature(0)
+        if not self._cal().get("editable"):
+            return features
+        for action, feature in (("calendar.add", CalendarEntityFeature.CREATE_EVENT),
+                                ("calendar.edit", CalendarEntityFeature.UPDATE_EVENT),
+                                ("calendar.delete", CalendarEntityFeature.DELETE_EVENT)):
+            if self.coordinator.data.can(action):
+                features |= feature
+        return features
+
+    def _own(self, uid: str) -> dict:
+        """The owner's own event behind ``uid``; a Zoho event or a due date is read only."""
+        ev = next((e for e in self._cal().get("events") or []
+                   if e.get("kind") == "own" and uid == f"own:{e.get('id')}"), None)
+        if ev is None:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="calendar_read_only")
+        return ev
+
+    def _payload(self, event: dict[str, Any]) -> dict[str, Any]:
+        """HA's event fields as Hisho's form: "Company: title" files it under that company (default Personal)."""
+        if event.get("rrule"):
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="calendar_repeating")
+        start, end = event["dtstart"], event["dtend"]
+        summary = str(event.get("summary") or "")
+        companies = [str(c["name"]) for c in self._cal().get("companies") or [] if c.get("name")]
+        company, _, rest = summary.partition(":")
+        if rest.strip() and company.strip().lower() in {c.lower() for c in companies + ["Personal"]}:
+            company = next(c for c in companies + ["Personal"] if c.lower() == company.strip().lower())
+            summary = rest.strip()
+        else:
+            company = "Personal"
+        all_day = not isinstance(start, datetime)
+        return {"title": summary, "company": company, "all_day": all_day, "start": start.isoformat(),
+                "end": end.isoformat(), "place": event.get("location") or "", "notes": event.get("description") or ""}
+
+    async def async_create_event(self, **kwargs: Any) -> None:
+        """A new event in the owner's calendar."""
+        await self.coordinator.async_action("calendar.add", "", self._payload(kwargs), context=self._context)
+
+    async def async_update_event(
+        self, uid: str, event: dict[str, Any], recurrence_id: str | None = None, recurrence_range: str | None = None
+    ) -> None:
+        """Change one of his own events (Hisho refuses it if the phone changed it meanwhile)."""
+        own = self._own(uid)
+        await self.coordinator.async_action(
+            "calendar.edit", own["id"], {**self._payload(event), "etag": own.get("etag") or ""}, context=self._context)
+
+    async def async_delete_event(
+        self, uid: str, recurrence_id: str | None = None, recurrence_range: str | None = None
+    ) -> None:
+        """Delete one of his own events (a repeating one: the whole series)."""
+        own = self._own(uid)
+        await self.coordinator.async_action("calendar.delete", own["id"], {"etag": own.get("etag") or ""},
+                                            context=self._context)
 
     @property
     def extra_state_attributes(self) -> dict:
