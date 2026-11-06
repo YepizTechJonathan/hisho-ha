@@ -104,6 +104,7 @@
           "up": "Up",
           "asleep": "Asleep",
           "away": "Away",
+          "off": "Off",
           "maintenance": "Maintenance",
           "unreachable": "Unreachable",
           "faulted": "Faulted"

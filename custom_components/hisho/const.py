@@ -27,7 +27,7 @@ SUPPORTED_SCHEMA: Final = 1
 UPDATE_INTERVAL: Final = timedelta(seconds=60)
 REQUEST_TIMEOUT: Final = 30
 
-MACHINE_STATES: Final = ["up", "asleep", "away", "maintenance", "unreachable", "faulted"]
+MACHINE_STATES: Final = ["up", "asleep", "away", "off", "maintenance", "unreachable", "faulted"]
 FOLDER_STATES: Final = ["ok", "info", "warn", "error", "unknown"]
 WORKER_STATES: Final = ["running", "blocked", "unknown"]
 DEVICE_STATES: Final = ["on", "off", "asleep", "offline", "unknown"]

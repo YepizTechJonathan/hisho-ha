@@ -68,6 +68,7 @@
         "state": {
           "asleep": "mdi:sleep",
           "away": "mdi:airplane",
+          "off": "mdi:power-off",
           "maintenance": "mdi:wrench",
           "unreachable": "mdi:lan-disconnect",
           "faulted": "mdi:alert-circle"
