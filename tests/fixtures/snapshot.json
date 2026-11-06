@@ -660,5 +660,69 @@
    "event": "job-transition",
    "text": "Transcribed on Hashira Ren"
   }
+ ],
+ "calendars": [
+  {
+   "id": "mine",
+   "name": "My calendar",
+   "accounts": 2,
+   "companies": [
+    {
+     "name": "PatriotPoint",
+     "color": "#2f80ed",
+     "mark": "🟦"
+    },
+    {
+     "name": "YepizTech",
+     "color": "#e5484d",
+     "mark": "🟥"
+    }
+   ],
+   "problems": [
+    {
+     "company": "PatriotPoint",
+     "status": "error",
+     "error": "refused the login"
+    }
+   ],
+   "events": [
+    {
+     "uid": "call-1",
+     "title": "Client call",
+     "start": "2026-10-26T10:00:00-07:00",
+     "end": "2026-10-26T10:30:00-07:00",
+     "all_day": false,
+     "place": "Zoom",
+     "company": "YepizTech",
+     "color": "#e5484d",
+     "mark": "🟥",
+     "kind": "event"
+    },
+    {
+     "uid": "conf",
+     "title": "Conference",
+     "start": "2026-10-28",
+     "end": "2026-10-30",
+     "all_day": true,
+     "place": "",
+     "company": "YepizTech",
+     "color": "#e5484d",
+     "mark": "🟥",
+     "kind": "event"
+    },
+    {
+     "uid": "hisho|PatriotPoint|SAM",
+     "title": "SAM.gov check",
+     "start": "2026-10-29T09:00:00-07:00",
+     "end": "2026-10-29T09:30:00-07:00",
+     "all_day": false,
+     "place": "",
+     "company": "PatriotPoint",
+     "color": "#2f80ed",
+     "mark": "🟦",
+     "kind": "due"
+    }
+   ]
+  }
  ]
 }

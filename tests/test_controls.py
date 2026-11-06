@@ -407,6 +407,28 @@ async def test_due_dates_calendar(hass: HomeAssistant, hisho: AiohttpClientMocke
     assert "Aim to start by 2026-11-01" in events[0]["description"]
 
 
+async def test_my_calendar(hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry,
+                           freezer: FrozenDateTimeFactory) -> None:
+    """ONE calendar, the owner's: every company's events and Hisho's due dates, each led by its company's square."""
+    freezer.move_to("2026-10-25 12:00:00")
+    await setup_entry(hass, config_entry)
+    entity_id = _eid(hass, "calendar", "my_calendar")
+    state = hass.states.get(entity_id)
+    assert state.attributes["friendly_name"].endswith("My calendar")
+    assert state.attributes["message"] == "🟥 YepizTech: Client call" and state.attributes["location"] == "Zoom"
+    assert state.attributes["companies"] == {"PatriotPoint": "#2f80ed", "YepizTech": "#e5484d"}
+    assert state.attributes["problems"] == ["PatriotPoint: refused the login"]
+    events = (await hass.services.async_call(
+        "calendar", "get_events",
+        {"entity_id": entity_id, "start_date_time": "2026-10-25 00:00:00", "end_date_time": "2026-11-05 00:00:00"},
+        blocking=True, return_response=True))[entity_id]["events"]
+    assert [(e["summary"], e["start"]) for e in events] == [
+        ("🟥 YepizTech: Client call", "2026-10-26T10:00:00-07:00"), ("🟥 YepizTech: Conference", "2026-10-28"),
+        ("🟦 PatriotPoint: SAM.gov check", "2026-10-29T09:00:00-07:00")]
+    assert events[2]["description"] == "Company: PatriotPoint\nHisho due date"
+    assert not [s for s in hass.states.async_all("calendar") if "yepiztech" in s.entity_id]   # no calendar per company
+
+
 async def test_addon_updates_and_phone_alerts(hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry) -> None:
     """A store add-on with a newer version shows in HA's Updates; installing goes through Hisho's store."""
     await setup_entry(hass, config_entry)

@@ -324,6 +324,9 @@
     "calendar": {
       "due_dates": {
         "name": "Due dates"
+      },
+      "my_calendar": {
+        "name": "My calendar"
       }
     },
     "update": {

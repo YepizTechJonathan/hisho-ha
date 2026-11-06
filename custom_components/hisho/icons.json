@@ -249,6 +249,9 @@
     "calendar": {
       "due_dates": {
         "default": "mdi:calendar-alert"
+      },
+      "my_calendar": {
+        "default": "mdi:calendar-account"
       }
     },
     "select": {
