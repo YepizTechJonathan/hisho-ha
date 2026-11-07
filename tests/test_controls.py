@@ -98,6 +98,59 @@ async def test_power_board_reset_and_force_off_are_opt_in_and_confirmed(
     assert _actions(aioclient_mock)[-1] == {"action": "machine.reset", "target": "hashira-ren", "args": {}, "confirm": True}
 
 
+PARENTAL = [{"machine": "hashira-ren", "state": "on", "child": "kid", "reachable": True, "signed_in": True,
+             "minutes_left_today": 29, "minutes_played_today": 65, "hours_today": "8:00-21:00", "note": None,
+             "at": 1, "days": [{"day": "Mon", "minutes": 60, "hours": "all day"}]}]
+
+
+async def test_a_kids_pc_gets_time_left_signed_in_and_its_controls(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, config_entry: MockConfigEntry, snapshot_data: dict[str, Any]
+) -> None:
+    """Parental controls: minutes left and played, signed in, Lock and 30 more minutes at once; Time's up and Shut
+    down created disabled and pressed confirmed; the service sends limits and hours as Hisho takes them."""
+    data = json.loads(json.dumps(snapshot_data))
+    data["parental"] = PARENTAL
+    data["allowed"] = [*data.get("allowed", []), *(f"parental.{x}" for x in ("lock", "stop", "more", "limits",
+                                                                             "hours", "off"))]
+    aioclient_mock.get(SNAPSHOT_URL, json=data)
+    aioclient_mock.post(ACTION_URL, json={"ok": True})
+    await setup_entry(hass, config_entry)
+    left = hass.states.get(_eid(hass, "sensor", "hashira-ren_parental_time_left"))
+    assert left.state == "29" and left.attributes["child"] == "kid" and left.attributes["unlimited"] is False
+    assert hass.states.get(_eid(hass, "sensor", "hashira-ren_parental_played_today")).state == "65"
+    assert hass.states.get(_eid(hass, "binary_sensor", "hashira-ren_parental_signed_in")).state == "on"
+    await hass.services.async_call("button", "press", {"entity_id": _eid(hass, "button", "hashira-ren_parental_more")},
+                                   blocking=True)
+    assert _actions(aioclient_mock)[-1] == {"action": "parental.more", "target": "hashira-ren", "args": {"value": 30}}
+    registry = er.async_get(hass)
+    stop = _eid(hass, "button", "hashira-ren_parental_stop")
+    assert registry.async_get(stop).disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    await _enable(hass, stop, config_entry)
+    await hass.services.async_call("button", "press", {"entity_id": stop}, blocking=True)
+    assert _actions(aioclient_mock)[-1] == {"action": "parental.stop", "target": "hashira-ren", "args": {},
+                                            "confirm": True}
+    await hass.services.async_call("hisho", "parental", {"machine": "hashira-ren", "control": "limits",
+                                                         "limits": [60, 60, 60, 60, 90, 120, "none"]}, blocking=True)
+    assert _actions(aioclient_mock)[-1]["args"] == {"value": [60, 60, 60, 60, 90, 120, None]}
+    await hass.services.async_call("hisho", "parental", {"machine": "hashira-ren", "control": "hours", "start": 8,
+                                                         "end": 21}, blocking=True)
+    assert _actions(aioclient_mock)[-1]["args"] == {"value": 8, "end": 21}
+
+
+async def test_a_kids_pc_that_is_off_is_unavailable_not_zero(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, config_entry: MockConfigEntry, snapshot_data: dict[str, Any]
+) -> None:
+    """A switched-off PC: its readings are unavailable (unknown), never "0 minutes" or "nobody signed in"."""
+    data = json.loads(json.dumps(snapshot_data))
+    data["parental"] = [{"machine": "hashira-ren", "state": "off", "reachable": False, "note": "switched off"}]
+    data["allowed"] = [*data.get("allowed", []), "parental.lock"]
+    aioclient_mock.get(SNAPSHOT_URL, json=data)
+    await setup_entry(hass, config_entry)
+    assert hass.states.get(_eid(hass, "sensor", "hashira-ren_parental_time_left")).state == "unavailable"
+    assert hass.states.get(_eid(hass, "binary_sensor", "hashira-ren_parental_signed_in")).state == "unavailable"
+    assert hass.states.get(_eid(hass, "button", "hashira-ren_parental_lock")).state == "unavailable"
+
+
 async def test_buttons_follow_what_hisho_allows(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, config_entry: MockConfigEntry, snapshot_data: dict[str, Any]
 ) -> None:

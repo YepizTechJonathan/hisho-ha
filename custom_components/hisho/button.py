@@ -50,6 +50,15 @@ RESET = HishoButtonDescription(key="reset", translation_key="reset", action="mac
 FORCE_OFF = HishoButtonDescription(key="force_off", translation_key="force_off", action="machine.force_off",
                                    danger=True)
 
+# A kid's PC (parental controls): lock now and 30 more minutes press at once; time's up and shut down are danger ones
+PARENTAL = (
+    HishoButtonDescription(key="parental_lock", translation_key="parental_lock", action="parental.lock"),
+    HishoButtonDescription(key="parental_more", translation_key="parental_more", action="parental.more"),
+    HishoButtonDescription(key="parental_stop", translation_key="parental_stop", action="parental.stop", danger=True),
+    HishoButtonDescription(key="parental_off", translation_key="parental_off", action="parental.off", danger=True),
+)
+MORE_MINUTES = 30
+
 
 class _Press:
     """Shared press: run the action, confirmed when the button is a danger one (it had to be enabled)."""
@@ -102,6 +111,11 @@ async def async_setup_entry(
                     for act in item.get("actions") or []:
                         add(f"item:{machine_id}:{item['addon']}:{item['entry']}:{item['id']}:{act['id']}",
                             HishoMachineItemButton(coordinator, machine_id, item, act))
+        for machine_id in data.parental:
+            if machine_id in data.machines:
+                for desc in PARENTAL:
+                    if data.can(desc.action):
+                        add(f"parental:{machine_id}:{desc.key}", HishoParentalButton(coordinator, machine_id, desc))
         if data.can("device.press"):
             for device_id, box in data.devices.items():
                 for item in box.get("items") or []:
@@ -235,3 +249,20 @@ class HishoMoveButton(_Press, HishoAddonEntity, ButtonEntity):
         return super().available and any(
             c.get("addon") == self.addon_name and c.get("move_to") for c in self.coordinator.data.raw.get("companions") or []
         )
+
+
+class HishoParentalButton(_Press, HishoMachineEntity, ButtonEntity):
+    """A kid's PC: lock the screen, 30 more minutes, time's up for today, shut down."""
+
+    def __init__(self, coordinator: HishoCoordinator, machine_id: str, description: HishoButtonDescription) -> None:
+        """Set up the button."""
+        super().__init__(coordinator, machine_id, description.key)
+        self.entity_description = description
+        self._target = machine_id
+        self._args = {"value": MORE_MINUTES} if description.key == "parental_more" else {}
+        self._attr_entity_registry_enabled_default = not description.danger
+
+    @property
+    def available(self) -> bool:
+        """Only while Hisho can read the PC."""
+        return super().available and bool((self.coordinator.data.parental.get(self.machine_id) or {}).get("reachable"))

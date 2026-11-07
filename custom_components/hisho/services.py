@@ -79,6 +79,20 @@ TRUST_SCHEMA = vol.Schema(
         vol.Optional("machines", default=[]): vol.All(cv.ensure_list, [cv.string]),
     }
 )
+_MINUTES = vol.All(vol.Coerce(int), vol.Range(min=0, max=1440))
+PARENTAL_SCHEMA = vol.Schema(
+    {
+        **BASE,
+        vol.Required("machine"): cv.string,
+        vol.Required("control"): vol.In(["lock", "stop", "more", "limits", "hours", "off"]),
+        # more: minutes to add; limits: 7 daily minutes Monday to Sunday (empty / none = no limit, 0 = no play)
+        vol.Optional("minutes"): vol.All(vol.Coerce(int), vol.Range(min=1, max=1440)),
+        vol.Optional("limits"): vol.All(cv.ensure_list, vol.Length(min=1, max=7),
+                                        [vol.Any(None, "", "none", _MINUTES)]),
+        vol.Optional("start"): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
+        vol.Optional("end"): vol.All(vol.Coerce(int), vol.Range(min=1, max=24)),
+    }
+)
 ASK_SCHEMA = vol.Schema(
     {**BASE, vol.Required("text"): cv.string, vol.Optional("conversation_id"): cv.string}
 )
@@ -167,6 +181,21 @@ def async_setup_services(hass: HomeAssistant) -> None:
         return _response(await _coordinator(hass, call).async_action("trust.start", "", args, confirm=True,
                                                                      context=call.context))
 
+    async def parental(call: ServiceCall) -> ServiceResponse:
+        control, args = call.data["control"], {}
+        if control == "more":
+            args["value"] = call.data.get("minutes", 30)
+        elif control == "limits":
+            days = [None if v in (None, "", "none") else v for v in call.data.get("limits") or []]
+            if len(days) not in (1, 7):
+                raise ServiceValidationError("limits: one value for every day, or 7 (Monday to Sunday)")
+            args["value"] = days * 7 if len(days) == 1 else days
+        elif control == "hours":
+            args["value"], args["end"] = call.data.get("start", 0), call.data.get("end", 24)
+        # time's up and shut down: calling the service is the owner's (or the automation's) yes
+        return _response(await _coordinator(hass, call).async_action(
+            f"parental.{control}", call.data["machine"], args, confirm=control in ("stop", "off"), context=call.context))
+
     for name, handler, schema in (
         ("run_action", run_action, RUN_ACTION_SCHEMA),
         ("alert", alert, ALERT_SCHEMA),
@@ -175,6 +204,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
         ("create_job", create_job, CREATE_JOB_SCHEMA),
         ("ask", ask, ASK_SCHEMA),
         ("trust_start", trust_start, TRUST_SCHEMA),
+        ("parental", parental, PARENTAL_SCHEMA),
     ):
         # Admins only (Jonathan, 2026-10-26); automations and scripts still call them.
         async_register_admin_service(

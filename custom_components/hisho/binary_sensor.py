@@ -95,6 +95,10 @@ async def async_setup_entry(
                 if service.get("id") and key not in known:
                     known.add(key)
                     new.append(HishoServiceSensor(coordinator, machine_id, service["id"]))
+        for machine_id in data.parental:
+            if machine_id in data.machines and (key := f"parental:{machine_id}:signed_in") not in known:
+                known.add(key)
+                new.append(HishoParentalSignedIn(coordinator, machine_id))
         for peer_id in data.peers:
             if (key := f"peer:{peer_id}") not in known:
                 known.add(key)
@@ -384,3 +388,33 @@ class HishoTrustWindow(HishoEntity, BinarySensorEntity):
         attrs["recent"] = [{k: w.get(k) for k in ("machine", "by", "started", "ended", "ended_by", "open",
                                                   "commands_total")} for w in trust.get("recent") or []]
         return attrs
+
+
+class HishoParentalSignedIn(HishoMachineEntity, BinarySensorEntity):
+    """A kid's PC: the child is signed in (playing, or at least at the desktop)."""
+
+    _attr_translation_key = "parental_signed_in"
+    _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
+
+    def __init__(self, coordinator: HishoCoordinator, machine_id: str) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, machine_id, "parental_signed_in")
+
+    @property
+    def _entry(self) -> dict[str, Any]:
+        return self.coordinator.data.parental.get(self.machine_id) or {}
+
+    @property
+    def available(self) -> bool:
+        """Only while Hisho can read the PC (off = unknown, not "nobody")."""
+        return super().available and bool(self._entry.get("reachable"))
+
+    @property
+    def is_on(self) -> bool:
+        """Signed in."""
+        return bool(self._entry.get("signed_in"))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Who."""
+        return {"child": self._entry.get("child")}

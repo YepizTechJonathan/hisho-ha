@@ -83,6 +83,9 @@
       },
       "trust_window": {
         "name": "Trust window"
+      },
+      "parental_signed_in": {
+        "name": "Child signed in"
       }
     },
     "sensor": {
@@ -245,6 +248,12 @@
           "passed": "Passed",
           "failed": "Failed"
         }
+      },
+      "parental_time_left": {
+        "name": "Play time left today"
+      },
+      "parental_played_today": {
+        "name": "Played today"
       }
     },
     "button": {
@@ -286,6 +295,18 @@
       },
       "move_to_core": {
         "name": "Move to {to}"
+      },
+      "parental_lock": {
+        "name": "Lock screen"
+      },
+      "parental_more": {
+        "name": "30 more minutes"
+      },
+      "parental_stop": {
+        "name": "Time's up for today"
+      },
+      "parental_off": {
+        "name": "Shut down"
       }
     },
     "switch": {
@@ -557,6 +578,40 @@
           "description": "Which machines (their Hisho names). Empty: the machine Hisho's Core runs on."
         }
       }
+    },
+    "parental": {
+      "name": "Parental controls",
+      "description": "A kid's PC: lock the screen, time's up for today (the session ends and they stay out until tomorrow), more time, the daily limits, the hours play is allowed, or shut it down. Hisho's journal names who asked.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hisho",
+          "description": "Which Hisho, when more than one is set up."
+        },
+        "machine": {
+          "name": "PC",
+          "description": "The kid's PC (its Hisho name)."
+        },
+        "control": {
+          "name": "Control",
+          "description": "What to do."
+        },
+        "minutes": {
+          "name": "Minutes",
+          "description": "More time: how many minutes to add today (default 30)."
+        },
+        "limits": {
+          "name": "Daily limits",
+          "description": "Minutes a day, Monday to Sunday (7 values), or one for every day. none = no limit, 0 = no play that day."
+        },
+        "start": {
+          "name": "From",
+          "description": "Play hours: the first hour play is allowed (0-23)."
+        },
+        "end": {
+          "name": "Until",
+          "description": "Play hours: the hour play ends (1-24; 24 = midnight)."
+        }
+      }
     }
   },
   "selector": {
@@ -582,6 +637,16 @@
         "clear": "Clear",
         "dispatch": "Dispatch",
         "resume": "Resume"
+      }
+    },
+    "parental_control": {
+      "options": {
+        "lock": "Lock screen",
+        "stop": "Time's up for today",
+        "more": "More time",
+        "limits": "Daily limits",
+        "hours": "Play hours",
+        "off": "Shut down"
       }
     }
   },

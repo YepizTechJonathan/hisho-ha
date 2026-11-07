@@ -287,6 +287,9 @@
     },
     "trust_start": {
       "service": "mdi:shield-lock-open"
+    },
+    "parental": {
+      "service": "mdi:human-male-child"
     }
   }
 }

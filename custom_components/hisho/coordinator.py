@@ -80,6 +80,11 @@ class HishoData:
         """Fleet and per-machine maintenance."""
         return self.raw.get("maintenance") or {}
 
+    @property
+    def parental(self) -> dict[str, dict[str, Any]]:
+        """The kids' PCs with parental controls, by machine (Hisho reads timekpr on each at most once a minute)."""
+        return {p["machine"]: p for p in self.raw.get("parental") or [] if p.get("machine")}
+
     def can(self, action: str) -> bool:
         """Whether Hisho lets this Home Assistant do that (its scopes, kept by Hisho)."""
         return action in self.allowed

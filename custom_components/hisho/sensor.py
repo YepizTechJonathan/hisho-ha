@@ -288,6 +288,11 @@ async def async_setup_entry(
             if (data.controls.get(machine_id) or {}).get("power") and (key := f"awake:{machine_id}") not in known:
                 known.add(key)
                 new.append(HishoAwakeSensor(coordinator, machine_id))
+        for machine_id in data.parental:
+            for kind in ("time_left", "played_today"):
+                if machine_id in data.machines and (key := f"parental:{machine_id}:{kind}") not in known:
+                    known.add(key)
+                    new.append(HishoParentalSensor(coordinator, machine_id, kind))
         for device_id, box in data.devices.items():
             for kind in ("state", "health"):
                 if (key := f"box:{device_id}:{kind}") not in known:
@@ -590,3 +595,47 @@ class HishoAddonStatus(HishoAddonEntity, SensorEntity):
                 "host": addon.get("host"), "kind": addon.get("kind"), "addon": self.addon_name,
                 "actions": addon.get("actions") or [], "settings": addon.get("settings") or {}}
 
+
+
+class HishoParentalSensor(HishoMachineEntity, SensorEntity):
+    """A kid's PC (parental controls): minutes of play left today, or played today. Unknown while the PC is off;
+    time left is unknown on a day with no limit too (attribute ``unlimited``)."""
+
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
+    _unrecorded_attributes = frozenset({"days"})
+
+    def __init__(self, coordinator: HishoCoordinator, machine_id: str, kind: str) -> None:
+        """Set up the sensor."""
+        super().__init__(coordinator, machine_id, f"parental_{kind}")
+        self._kind = kind
+        self._attr_translation_key = f"parental_{kind}"
+        if kind == "time_left":
+            self._attr_icon = "mdi:timer-sand"
+        else:
+            self._attr_icon = "mdi:gamepad-variant"
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    @property
+    def _entry(self) -> dict[str, Any]:
+        return self.coordinator.data.parental.get(self.machine_id) or {}
+
+    @property
+    def available(self) -> bool:
+        """Only while Hisho can read the PC."""
+        return super().available and bool(self._entry.get("reachable"))
+
+    @property
+    def native_value(self) -> StateType:
+        """Minutes."""
+        return self._entry.get("minutes_left_today" if self._kind == "time_left" else "minutes_played_today")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """On time left: who plays here, today's play hours, the daily limits, and any note (cards show these)."""
+        if self._kind != "time_left":
+            return None
+        e = self._entry
+        return {"machine": self.machine_id, "child": e.get("child"), "state": e.get("state"),
+                "unlimited": e.get("reachable") and e.get("minutes_left_today") is None,
+                "hours_today": e.get("hours_today"), "days": e.get("days") or [], "note": e.get("note")}

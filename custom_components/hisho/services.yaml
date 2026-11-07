@@ -139,3 +139,43 @@ trust_start:
       selector:
         text:
           multiple: true
+parental:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: hisho
+    machine:
+      required: true
+      example: hashira-kocho-benji
+      selector:
+        text:
+    control:
+      required: true
+      selector:
+        select:
+          translation_key: parental_control
+          options: [lock, stop, more, limits, hours, "off"]
+    minutes:
+      example: 30
+      selector:
+        number:
+          min: 1
+          max: 1440
+          unit_of_measurement: min
+    limits:
+      example: "[60, 60, 60, 60, 90, 120, 120]"
+      selector:
+        object:
+    start:
+      example: 8
+      selector:
+        number:
+          min: 0
+          max: 23
+    end:
+      example: 21
+      selector:
+        number:
+          min: 1
+          max: 24
