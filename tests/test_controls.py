@@ -533,7 +533,13 @@ async def test_setup_parity_with_the_dashboard(
     snapshot_data["approvals"] = [{"id": "a1", "title": "Reply to Randy", "company": "YepizTech", "status": "waiting"}]
     snapshot_data["vault"] = [{"title": "Forgejo", "where": "infisical", "saved_in": [], "waiting": ["vaultwarden"]},
                               {"title": "Semaphore", "where": "infisical", "saved_in": ["Vaultwarden"], "waiting": []}]
-    snapshot_data["trust"] = {"open": True, "until": "2026-11-01T03:30:00+00:00", "machines": ["souko"], "here": "souko"}
+    snapshot_data["trust"] = {"open": True, "until": "2026-11-01T03:30:00+00:00", "machines": ["souko"], "here": "souko",
+                              "open_on": {"souko": {"until": "2026-11-01T03:30:00+00:00", "always": False,
+                                                    "by": "Home Assistant user Jonathan",
+                                                    "started": "2026-11-01T03:00:00+00:00"}},
+                              "recent": [{"machine": "Souko", "by": "Home Assistant user Jonathan",
+                                          "started": "2026-11-01T03:00:00+00:00", "ended": None, "ended_by": None,
+                                          "open": True, "commands_total": 4}]}
     snapshot_data["companions"] = [{"addon": "email", "title": "Email", "on": "souko", "move_to": "kihon"}]
     snapshot_data["image_gate"] = {"image": "hisho-souko-omarchy-20261103f", "ok": False, "passed": 305, "failed": 4,
                                    "failed_checks": ["With a Kihon: Forgejo works"], "at": 1793721153.9}
@@ -550,6 +556,8 @@ async def test_setup_parity_with_the_dashboard(
     assert hass.states.get(_eid(hass, "sensor", "logins_not_in_vault")).state == "1"
     trust = hass.states.get(_eid(hass, "binary_sensor", "trust_window"))
     assert trust.state == STATE_ON and trust.attributes["until"] == "2026-11-01T03:30:00+00:00"
+    assert trust.attributes["opened_by"] == "souko: Home Assistant user Jonathan"     # who turned it on
+    assert trust.attributes["recent"][0]["commands_total"] == 4 and "commands" not in trust.attributes["recent"][0]
 
     for key in ("check_souko", "trust_end"):
         await hass.services.async_call("button", "press", {"entity_id": _eid(hass, "button", key)}, blocking=True)

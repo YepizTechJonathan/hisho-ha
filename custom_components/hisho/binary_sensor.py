@@ -353,8 +353,9 @@ class HishoCritical(HishoEntity, BinarySensorEntity):
 
 
 class HishoTrustWindow(HishoEntity, BinarySensorEntity):
-    """On while Claude Code may act without asking on Hisho's Core machine (the trust window). It ends by itself;
-    the "End trust window" button ends it now."""
+    """On while Claude Code may act without asking on any Hisho machine (the trust window). It ends by itself;
+    the "End trust window" button ends it now. Its attributes say who or what opened each open window and the last
+    few windows with how many tools Claude ran (the commands themselves stay on Hisho's dashboard)."""
 
     _attr_translation_key = "trust_window"
 
@@ -374,6 +375,12 @@ class HishoTrustWindow(HishoEntity, BinarySensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Until when, and the machines it can be opened on."""
+        """Until when, who opened it on which machine, the last windows, and the machines it can be opened on."""
         trust = self.coordinator.data.raw.get("trust") or {}
-        return {k: trust.get(k) for k in ("until", "always", "seconds_left", "machines", "here")}
+        attrs = {k: trust.get(k) for k in ("until", "always", "seconds_left", "machines", "here")}
+        open_on = trust.get("open_on") or {}
+        attrs["open_on"] = {m: {k: w.get(k) for k in ("until", "always", "by", "started")} for m, w in open_on.items()}
+        attrs["opened_by"] = "; ".join(f"{m}: {w.get('by') or 'not recorded'}" for m, w in open_on.items()) or None
+        attrs["recent"] = [{k: w.get(k) for k in ("machine", "by", "started", "ended", "ended_by", "open",
+                                                  "commands_total")} for w in trust.get("recent") or []]
+        return attrs
