@@ -45,6 +45,10 @@ HUB_BUTTONS = (
 MOVE = HishoButtonDescription(key="move_to_core", translation_key="move_to_core", action="companion.move", danger=True)
 WAKE = HishoButtonDescription(key="wake", translation_key="wake", action="machine.wake")
 PARK = HishoButtonDescription(key="park", translation_key="park", action="machine.park", danger=True)
+# A power board's reset / force off (Core lists them only for a machine with a board that is not protected)
+RESET = HishoButtonDescription(key="reset", translation_key="reset", action="machine.reset", danger=True)
+FORCE_OFF = HishoButtonDescription(key="force_off", translation_key="force_off", action="machine.force_off",
+                                   danger=True)
 
 
 class _Press:
@@ -85,7 +89,7 @@ async def async_setup_entry(
                 add(f"hub:{desc.key}", HishoHubButton(coordinator, desc))
         for machine_id in data.machines:
             controls = data.controls.get(machine_id) or {}
-            for desc in (WAKE, PARK):
+            for desc in (WAKE, PARK, RESET, FORCE_OFF):
                 if desc.key in (controls.get("power") or []) and data.can(desc.action):
                     add(f"machine:{machine_id}:{desc.key}", HishoMachineButton(coordinator, machine_id, desc))
             if data.can("unit.restart"):

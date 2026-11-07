@@ -263,6 +263,12 @@
       "park": {
         "name": "Park"
       },
+      "reset": {
+        "name": "Reset"
+      },
+      "force_off": {
+        "name": "Force power off"
+      },
       "restart_unit": {
         "name": "Restart {unit}"
       },

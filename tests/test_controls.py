@@ -76,6 +76,28 @@ async def test_danger_buttons_start_disabled_and_press_confirmed(
     }
 
 
+async def test_power_board_reset_and_force_off_are_opt_in_and_confirmed(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, config_entry: MockConfigEntry, snapshot_data: dict[str, Any]
+) -> None:
+    """A machine with a power board gets Reset and Force power off, created disabled and pressed confirmed; a
+    protected machine (Core leaves them out of its power list) gets neither."""
+    data = json.loads(json.dumps(snapshot_data))
+    data["controls"]["hashira-ren"]["power"] = ["park", "wake", "reset", "force_off"]
+    data["allowed"] = [*data.get("allowed", []), "machine.reset", "machine.force_off"]   # what a newer Core allows
+    aioclient_mock.get(SNAPSHOT_URL, json=data)
+    aioclient_mock.post(ACTION_URL, json={"ok": True})
+    await setup_entry(hass, config_entry)
+    registry = er.async_get(hass)
+    reset, force_off = _eid(hass, "button", "hashira-ren_reset"), _eid(hass, "button", "hashira-ren_force_off")
+    assert registry.async_get(reset).disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    assert registry.async_get(force_off).disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    assert not [e for e in er.async_entries_for_config_entry(registry, config_entry.entry_id)
+                if e.unique_id.endswith("souko_reset") or e.unique_id.endswith("souko_force_off")]
+    await _enable(hass, reset, config_entry)
+    await hass.services.async_call("button", "press", {"entity_id": reset}, blocking=True)
+    assert _actions(aioclient_mock)[-1] == {"action": "machine.reset", "target": "hashira-ren", "args": {}, "confirm": True}
+
+
 async def test_buttons_follow_what_hisho_allows(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, config_entry: MockConfigEntry, snapshot_data: dict[str, Any]
 ) -> None:
