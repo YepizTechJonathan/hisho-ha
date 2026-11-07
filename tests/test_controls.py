@@ -427,12 +427,26 @@ async def test_my_calendar(hass: HomeAssistant, hisho: AiohttpClientMocker, conf
         ("🟥 YepizTech: Conference", "2026-10-28"),
         ("🟦 PatriotPoint: SAM.gov check", "2026-10-29T09:00:00-07:00")]
     assert events[3]["description"] == "Company: PatriotPoint\nHisho due date"
+    # each outside event names its real source: a Google event is never "From Zoho"
+    assert events[0]["description"] == "Company: YepizTech\nFrom Zoho: jonathan (read only)"
+    assert events[2]["description"] == "Company: YepizTech\nFrom Google Calendar (read only)"
     assert not [s for s in hass.states.async_all("calendar") if "yepiztech" in s.entity_id]   # no calendar per company
+
+
+def test_outside_event_source_wording() -> None:
+    """The source and calendar Core names, the source left out when the name says it; an older Core names neither."""
+    from custom_components.hisho.calendar import _from
+
+    assert _from({"source": "Google", "calendar": "Me (Google)"}) == "From Me (Google) (read only)"
+    assert _from({"source": "Zoho", "calendar": "jonathan"}) == "From Zoho: jonathan (read only)"
+    assert _from({"source": "iCloud"}) == "From iCloud (read only)"
+    assert _from({"calendar": "Work"}) == "From Work (read only)"
+    assert _from({}) == "From another calendar (read only)"   # never guesses Zoho
 
 
 async def test_my_calendar_adds_changes_and_deletes_his_own_events_only(
         hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry, freezer: FrozenDateTimeFactory) -> None:
-    """His own events go to Hisho's calendar action; a Zoho event or a due date is refused as read only."""
+    """His own events go to Hisho's calendar action; an outside event or a due date is refused as read only."""
     freezer.move_to("2026-10-25 12:00:00")
     await setup_entry(hass, config_entry)
     entity_id = _eid(hass, "calendar", "my_calendar")
@@ -454,7 +468,7 @@ async def test_my_calendar_adds_changes_and_deletes_his_own_events_only(
     edit = _actions(hisho)[-1]
     assert edit["action"] == "calendar.edit" and edit["target"] == "abc.ics" and edit["args"]["etag"] == '"7"'
     with pytest.raises(ServiceValidationError):
-        await ent.async_delete_event("call-1|2026-10-26T10:00:00-07:00")   # Zoho: read only
+        await ent.async_delete_event("call-1|2026-10-26T10:00:00-07:00")   # an outside (Zoho) event: read only
 
 
 async def test_addon_updates_and_phone_alerts(hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry) -> None:

@@ -1,7 +1,7 @@
-"""Calendars: "My calendar" (the owner's own, kept by Hisho: his events, each Zoho calendar and Hisho's due dates in
-one, each tagged with its company and colour; Hisho's Calendar card paints the colours) and "Due dates" (the
-businesses' due dates alone). His own events can be added, changed and deleted here (Hisho's operate scope); Zoho
-events and due dates are read only."""
+"""Calendars: "My calendar" (the owner's own, kept by Hisho: his events, each outside calendar Hisho reads (Zoho,
+Google, ...) and Hisho's due dates in one, each tagged with its company and colour; Hisho's Calendar card paints the
+colours) and "Due dates" (the businesses' due dates alone). His own events can be added, changed and deleted here
+(Hisho's operate scope); outside events and due dates are read only, and each says where it comes from."""
 
 from __future__ import annotations
 
@@ -89,6 +89,17 @@ def _when(value: str) -> date | datetime | None:
     return dt_util.parse_datetime(value)
 
 
+def _from(ev: dict) -> str:
+    """Where a read-only outside event comes from, as Core names it: its source (Google, Zoho, iCloud, ...) and its
+    calendar's name, the source left out when the name already says it; a Core from before 1.16 names neither."""
+    source, calendar = str(ev.get("source") or "").strip(), str(ev.get("calendar") or "").strip()
+    if source and calendar and source.lower() not in calendar.lower():
+        where = f"{source}: {calendar}"
+    else:
+        where = calendar or source or "another calendar"
+    return f"From {where} (read only)"
+
+
 def _my_events(raw: list[dict]) -> list[CalendarEvent]:
     events = []
     for ev in raw:
@@ -97,7 +108,7 @@ def _my_events(raw: list[dict]) -> list[CalendarEvent]:
             continue
         company = str(ev.get("company") or "")
         lines = [f"Company: {company}" if company else None,
-                 "Hisho due date" if ev.get("kind") == "due" else "From Zoho (read only)" if ev.get("kind") == "event" else None,
+                 "Hisho due date" if ev.get("kind") == "due" else _from(ev) if ev.get("kind") == "event" else None,
                  ev.get("notes") or None]
         events.append(
             CalendarEvent(
@@ -144,7 +155,7 @@ class HishoMyCalendar(HishoEntity, CalendarEntity):
         return features
 
     def _own(self, uid: str) -> dict:
-        """The owner's own event behind ``uid``; a Zoho event or a due date is read only."""
+        """The owner's own event behind ``uid``; an outside event or a due date is read only."""
         ev = next((e for e in self._cal().get("events") or []
                    if e.get("kind") == "own" and uid == f"own:{e.get('id')}"), None)
         if ev is None:
