@@ -704,7 +704,9 @@
      "company": "YepizTech",
      "color": "#e5484d",
      "mark": "🟥",
-     "kind": "event"
+     "kind": "event",
+     "source": "Zoho",
+     "calendar": "jonathan"
     },
     {
      "uid": "x@hisho",
@@ -732,7 +734,9 @@
      "company": "YepizTech",
      "color": "#e5484d",
      "mark": "🟥",
-     "kind": "event"
+     "kind": "event",
+     "source": "Google",
+     "calendar": "Google Calendar"
     },
     {
      "uid": "hisho|PatriotPoint|SAM",
