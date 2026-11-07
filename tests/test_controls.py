@@ -100,7 +100,8 @@ async def test_power_board_reset_and_force_off_are_opt_in_and_confirmed(
 
 PARENTAL = [{"machine": "hashira-ren", "state": "on", "child": "kid", "reachable": True, "signed_in": True,
              "minutes_left_today": 29, "minutes_played_today": 65, "hours_today": "8:00-21:00", "note": None,
-             "at": 1, "days": [{"day": "Mon", "minutes": 60, "hours": "all day"}]}]
+             "at": 1, "days": [{"day": "Mon", "minutes": 60, "hours": "all day"}],
+             "setup": "95bfef4", "setup_error": None}]
 
 
 async def test_a_kids_pc_gets_time_left_signed_in_and_its_controls(
@@ -117,6 +118,7 @@ async def test_a_kids_pc_gets_time_left_signed_in_and_its_controls(
     await setup_entry(hass, config_entry)
     left = hass.states.get(_eid(hass, "sensor", "hashira-ren_parental_time_left"))
     assert left.state == "29" and left.attributes["child"] == "kid" and left.attributes["unlimited"] is False
+    assert left.attributes["setup"] == "95bfef4" and left.attributes["setup_error"] is None
     assert hass.states.get(_eid(hass, "sensor", "hashira-ren_parental_played_today")).state == "65"
     assert hass.states.get(_eid(hass, "binary_sensor", "hashira-ren_parental_signed_in")).state == "on"
     await hass.services.async_call("button", "press", {"entity_id": _eid(hass, "button", "hashira-ren_parental_more")},

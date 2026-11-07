@@ -638,4 +638,5 @@ class HishoParentalSensor(HishoMachineEntity, SensorEntity):
         e = self._entry
         return {"machine": self.machine_id, "child": e.get("child"), "state": e.get("state"),
                 "unlimited": e.get("reachable") and e.get("minutes_left_today") is None,
-                "hours_today": e.get("hours_today"), "days": e.get("days") or [], "note": e.get("note")}
+                "hours_today": e.get("hours_today"), "days": e.get("days") or [], "note": e.get("note"),
+                "setup": e.get("setup"), "setup_error": e.get("setup_error")}
