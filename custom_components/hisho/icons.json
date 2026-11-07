@@ -172,6 +172,12 @@
       },
       "logins_not_in_vault": {
         "default": "mdi:shield-key"
+      },
+      "game_cache_used": {
+        "default": "mdi:harddisk"
+      },
+      "game_cache_share_24h": {
+        "default": "mdi:download-network"
       }
     },
     "button": {

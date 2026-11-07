@@ -666,3 +666,31 @@ async def test_setup_parity_with_the_dashboard(
     assert sent[2] == {"action": "trust.start", "target": "", "confirm": True,
                        "args": {"minutes": 15, "machines": [], "user": hass_admin_user.name}}
     assert sent[3] == {"action": "companion.move", "target": "email", "args": {}, "confirm": True}
+
+
+async def test_the_game_cache_sensors(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, config_entry: MockConfigEntry, snapshot_data: dict[str, Any]
+) -> None:
+    """The LAN game cache: GB used and the share served from the cache in the last 24 h, the newest download as an
+    attribute; both unavailable while Hisho can't read the cache."""
+    data = json.loads(json.dumps(snapshot_data))
+    data["game_cache"] = {"ok": True, "error": None, "address": "192.0.2.32", "used_gb": 3.65, "quota_gb": 2199.02,
+                          "percent_from_cache_24h": 50, "gb_from_cache_24h": 1.48, "gb_from_internet_24h": 1.48,
+                          "hits": 900, "misses": 900, "percent_from_cache": 50, "at": 1,
+                          "last_download": {"pc": "gaming-pc-2", "start": 1, "end": 2, "gb_from_cache": 1.48,
+                                            "gb_from_internet": 0.0, "percent_from_cache": 100, "depots": ["4704691"]}}
+    aioclient_mock.get(SNAPSHOT_URL, json=data)
+    await setup_entry(hass, config_entry)
+    used = hass.states.get(_eid(hass, "sensor", "game_cache_used"))
+    assert float(used.state) == 3.65 and used.attributes["last_download"]["pc"] == "gaming-pc-2"
+    assert hass.states.get(_eid(hass, "sensor", "game_cache_share_24h")).state == "50"
+
+
+async def test_the_game_cache_sensors_unavailable_when_unread(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, config_entry: MockConfigEntry, snapshot_data: dict[str, Any]
+) -> None:
+    data = json.loads(json.dumps(snapshot_data))
+    data["game_cache"] = {"ok": False, "error": "can't reach TrueNAS"}
+    aioclient_mock.get(SNAPSHOT_URL, json=data)
+    await setup_entry(hass, config_entry)
+    assert hass.states.get(_eid(hass, "sensor", "game_cache_used")).state == STATE_UNAVAILABLE

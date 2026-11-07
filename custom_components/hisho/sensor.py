@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTime
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfInformation, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -44,6 +44,12 @@ def _souko_check(check: dict[str, Any] | None) -> str | None:
     return "passed" if check.get("ok") else "problems"
 
 
+def _cache(data: HishoData) -> dict[str, Any]:
+    """The LAN game cache (Hisho reads it from the NAS at most every 5 minutes); empty when it can't be read."""
+    cache = data.raw.get("game_cache") or {}
+    return cache if cache.get("ok") else {}
+
+
 @dataclass(frozen=True, kw_only=True)
 class HishoHubSensorDescription(SensorEntityDescription):
     """A reading of the whole fleet."""
@@ -63,6 +69,22 @@ class HishoMachineSensorDescription(SensorEntityDescription):
 
 
 HUB_SENSORS: tuple[HishoHubSensorDescription, ...] = (
+    HishoHubSensorDescription(
+        key="game_cache_used",
+        translation_key="game_cache_used",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        native_unit_of_measurement=UnitOfInformation.GIGABYTES,
+        suggested_display_precision=1,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: _cache(d).get("used_gb"),
+    ),
+    HishoHubSensorDescription(
+        key="game_cache_share_24h",
+        translation_key="game_cache_share_24h",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: _cache(d).get("percent_from_cache_24h"),
+    ),
     HishoHubSensorDescription(
         key="machines_online",
         translation_key="machines_online",
@@ -362,6 +384,10 @@ class HishoHubSensor(HishoEntity, SensorEntity):
             check = data.raw.get("souko_check") or {}
             return {"at": check.get("at"), "passed": check.get("passed"), "failed": check.get("failed"),
                     "checks": check.get("checks") or []}
+        if key in ("game_cache_used", "game_cache_share_24h"):
+            cache = _cache(data)
+            return {k: cache.get(k) for k in ("address", "quota_gb", "gb_from_cache_24h", "gb_from_internet_24h",
+                                               "hits", "misses", "percent_from_cache", "last_download", "at")} or None
         if key == "backup_last_good":
             return {k: (data.raw.get("backup") or {}).get(k) for k in ("at", "ok", "error")}
         if key == "approvals_waiting":

@@ -254,6 +254,12 @@
       },
       "parental_played_today": {
         "name": "Played today"
+      },
+      "game_cache_used": {
+        "name": "Game cache used"
+      },
+      "game_cache_share_24h": {
+        "name": "Game cache share, last 24 h"
       }
     },
     "button": {
