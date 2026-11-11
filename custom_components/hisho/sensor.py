@@ -592,7 +592,7 @@ class HishoBoxItemSensor(HishoBoxEntity, SensorEntity):
 class HishoAddonStatus(HishoAddonEntity, SensorEntity):
     """How an add-on is doing: ok, needs a look, problem, needs setup, off."""
 
-    _unrecorded_attributes = frozenset({"actions", "problems", "settings"})
+    _unrecorded_attributes = frozenset({"actions", "problems", "settings", "card"})
 
     _attr_translation_key = "addon_status"
     _attr_device_class = SensorDeviceClass.ENUM
@@ -619,7 +619,9 @@ class HishoAddonStatus(HishoAddonEntity, SensorEntity):
         addon = self.addon or {}
         return {"problems": addon.get("problems") or [], "version": addon.get("version"),
                 "host": addon.get("host"), "kind": addon.get("kind"), "addon": self.addon_name,
-                "actions": addon.get("actions") or [], "settings": addon.get("settings") or {}}
+                "actions": addon.get("actions") or [], "settings": addon.get("settings") or {},
+                # its overview card (Invoicing's Money, Gov bids): Hisho never sends a private add-on's
+                "card": addon.get("card")}
 
 
 

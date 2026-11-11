@@ -385,6 +385,8 @@ async def test_attributes_cards_read(hass: HomeAssistant, hisho: AiohttpClientMo
     assert hass.states.get(_eid(hass, "sensor", "hashira-ren_state")).attributes["power"] == ["park", "wake"]
     addon = hass.states.get(_eid(hass, "sensor", "addon_web-factory_status")).attributes
     assert addon["addon"] == "web-factory" and addon["actions"][1]["danger"] is True
+    assert addon["card"]["title"] == "Previews" and addon["card"]["rows"][0]["value"] == "0"
+    assert hass.states.get(_eid(hass, "sensor", "addon_email_status")).attributes["card"] is None
 
 
 async def test_only_admins_press_hisho_controls(

@@ -439,6 +439,19 @@
     "entries": [
      "yepiz-tech"
     ]
+   },
+   "card": {
+    "title": "Previews",
+    "rows": [
+     {
+      "label": "Preview sites",
+      "value": "0",
+      "detail": "",
+      "state": "ok",
+      "indent": false,
+      "url": "#/addons/web-factory"
+     }
+    ]
    }
   },
   {
