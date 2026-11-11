@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -22,6 +23,43 @@ def via_hub(coordinator: HishoCoordinator) -> dict[str, Any]:
     return {"via_device": (DOMAIN, coordinator.instance_id)}
 
 
+class _Base(CoordinatorEntity[HishoCoordinator]):
+    """What every Hisho entity shares: it tells its platform when Home Assistant deletes it."""
+
+    _forget: Callable[[], None] | None = None
+
+    async def async_removed_from_registry(self) -> None:
+        """Its device left Hisho's snapshot and was removed: let the platform add it again if it comes back."""
+        if self._forget:
+            self._forget()
+
+
+_E = TypeVar("_E", bound=_Base)
+
+
+class Known:
+    """The entities a platform has added, by key.
+
+    A device missing from one snapshot (a box while Core restarts and has not read its add-ons yet) is removed with
+    its entities; forgetting their keys then lets the platform add them again once Hisho reports the device again.
+    Remembering them had left the device gone until Home Assistant restarted (the dashboard's Devices view blank).
+    """
+
+    def __init__(self) -> None:
+        """Nothing added yet."""
+        self._keys: set[str] = set()
+
+    def __contains__(self, key: str) -> bool:
+        """Whether this key's entity is in Home Assistant."""
+        return key in self._keys
+
+    def add(self, key: str, entity: _E) -> _E:
+        """Remember the key until the entity is deleted from Home Assistant; returns the entity."""
+        self._keys.add(key)
+        entity._forget = lambda: self._keys.discard(key)  # noqa: SLF001
+        return entity
+
+
 def hub_device_info(coordinator: HishoCoordinator) -> DeviceInfo:
     """The Hisho hub: the fleet as a whole."""
     raw = coordinator.data.raw
@@ -36,7 +74,7 @@ def hub_device_info(coordinator: HishoCoordinator) -> DeviceInfo:
     )
 
 
-class HishoEntity(CoordinatorEntity[HishoCoordinator]):
+class HishoEntity(_Base):
     """An entity on the Hisho hub device."""
 
     _attr_has_entity_name = True
@@ -48,7 +86,7 @@ class HishoEntity(CoordinatorEntity[HishoCoordinator]):
         self._attr_device_info = hub_device_info(coordinator)
 
 
-class HishoMachineEntity(CoordinatorEntity[HishoCoordinator]):
+class HishoMachineEntity(_Base):
     """An entity on one machine's device.
 
     Available only while Hisho still lists the machine; the platforms also make
@@ -84,7 +122,7 @@ class HishoMachineEntity(CoordinatorEntity[HishoCoordinator]):
         return super().available and self.machine is not None
 
 
-class HishoBoxEntity(CoordinatorEntity[HishoCoordinator]):
+class HishoBoxEntity(_Base):
     """An entity on a box one of Hisho's add-ons knows: a server, a VM, storage, network gear."""
 
     _attr_has_entity_name = True
@@ -114,7 +152,7 @@ class HishoBoxEntity(CoordinatorEntity[HishoCoordinator]):
         return super().available and self.box is not None
 
 
-class HishoAddonEntity(CoordinatorEntity[HishoCoordinator]):
+class HishoAddonEntity(_Base):
     """An entity on one of Hisho's add-ons (a service device under the hub)."""
 
     _attr_has_entity_name = True

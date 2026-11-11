@@ -16,7 +16,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import HishoConfigEntry, HishoCoordinator
-from .entity import HishoAddonEntity, HishoBoxEntity, HishoEntity, HishoMachineEntity
+from .entity import HishoAddonEntity, HishoBoxEntity, HishoEntity, HishoMachineEntity, Known
 
 PARALLEL_UPDATES = 1
 
@@ -30,7 +30,7 @@ async def async_setup_entry(
 ) -> None:
     """Add switches as Hisho reports what can be switched."""
     coordinator = entry.runtime_data
-    known: set[str] = set()
+    known = Known()
 
     @callback
     def _add_new() -> None:
@@ -39,8 +39,7 @@ async def async_setup_entry(
 
         def add(key: str, entity: SwitchEntity) -> None:
             if key not in known:
-                known.add(key)
-                new.append(entity)
+                new.append(known.add(key, entity))
 
         maint = data.can("maintenance.on") and data.can("maintenance.off")
         if maint:

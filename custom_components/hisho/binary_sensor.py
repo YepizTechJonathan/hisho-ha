@@ -19,7 +19,7 @@ from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.util import dt as dt_util
 
 from .coordinator import HishoConfigEntry, HishoCoordinator
-from .entity import HishoEntity, HishoMachineEntity
+from .entity import HishoEntity, HishoMachineEntity, Known
 
 PARALLEL_UPDATES = 0
 
@@ -78,7 +78,7 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     async_add_entities([HishoSyncProblem(coordinator), HishoCoreReachable(coordinator), HishoCoreMaintenance(coordinator),
                         HishoCritical(coordinator), HishoTrustWindow(coordinator)])
-    known: set[str] = set()
+    known = Known()
 
     @callback
     def _add_new() -> None:
@@ -88,21 +88,17 @@ async def async_setup_entry(
             for desc in MACHINE_BINARY_SENSORS:
                 key = f"machine:{machine_id}:{desc.key}"
                 if key not in known and desc.exists_fn(machine):
-                    known.add(key)
-                    new.append(HishoMachineBinarySensor(coordinator, machine_id, desc))
+                    new.append(known.add(key, HishoMachineBinarySensor(coordinator, machine_id, desc)))
             for service in machine.get("services") or []:
                 key = f"service:{machine_id}:{service.get('id')}"
                 if service.get("id") and key not in known:
-                    known.add(key)
-                    new.append(HishoServiceSensor(coordinator, machine_id, service["id"]))
+                    new.append(known.add(key, HishoServiceSensor(coordinator, machine_id, service["id"])))
         for machine_id in data.parental:
             if machine_id in data.machines and (key := f"parental:{machine_id}:signed_in") not in known:
-                known.add(key)
-                new.append(HishoParentalSignedIn(coordinator, machine_id))
+                new.append(known.add(key, HishoParentalSignedIn(coordinator, machine_id)))
         for peer_id in data.peers:
             if (key := f"peer:{peer_id}") not in known:
-                known.add(key)
-                new.append(HishoSyncPeer(coordinator, peer_id))
+                new.append(known.add(key, HishoSyncPeer(coordinator, peer_id)))
         if new:
             async_add_entities(new)
 

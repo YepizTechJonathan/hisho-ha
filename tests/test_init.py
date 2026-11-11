@@ -198,6 +198,36 @@ async def test_a_new_machine_appears_and_a_retired_one_leaves(
     assert devices.async_get_device_by_identifier((DOMAIN, f"{INSTANCE}_hashira-ten"), config_entry.entry_id) is None
 
 
+async def test_a_device_that_leaves_and_comes_back_gets_its_entities_back(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, config_entry: MockConfigEntry,
+    snapshot_data: dict[str, Any], freezer: FrozenDateTimeFactory,
+) -> None:
+    """A box, an add-on or a machine missing from one snapshot (e.g. while Core restarts) is back whole with the next.
+
+    Its entities used to stay gone until Home Assistant restarted: the Devices view of the Hisho dashboard went blank.
+    """
+    aioclient_mock.get(SNAPSHOT_URL, json=snapshot_data)
+    await setup_entry(hass, config_entry)
+    keys = [("sensor", "device_truenas_state"), ("sensor", "device_truenas_item_truenas_truenas_pool-Potter"),
+            ("sensor", "addon_email_status"), ("binary_sensor", "hashira-ten_online")]
+    for platform, key in keys:
+        _entity_id(hass, platform, key)
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(SNAPSHOT_URL, json={**snapshot_data, "devices": [], "addons": [], "machines": [
+        m for m in snapshot_data["machines"] if m["id"] != "hashira-ten"]})
+    await _poll(hass, freezer)
+    devices = dr.async_get(hass)
+    assert devices.async_get_device_by_identifier((DOMAIN, f"{INSTANCE}_device_truenas"), config_entry.entry_id) is None
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(SNAPSHOT_URL, json=snapshot_data)
+    await _poll(hass, freezer)
+    assert devices.async_get_device_by_identifier((DOMAIN, f"{INSTANCE}_device_truenas"), config_entry.entry_id)
+    for platform, key in keys:
+        assert hass.states.get(_entity_id(hass, platform, key)), key
+
+
 async def test_a_device_can_be_deleted_only_once_hisho_drops_it(
     hass: HomeAssistant, mock_hisho: AiohttpClientMocker, config_entry: MockConfigEntry
 ) -> None:

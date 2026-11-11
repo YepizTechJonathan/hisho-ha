@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import HishoConfigEntry, HishoCoordinator
-from .entity import HishoAddonEntity
+from .entity import HishoAddonEntity, Known
 
 PARALLEL_UPDATES = 1
 
@@ -21,7 +21,7 @@ async def async_setup_entry(
 ) -> None:
     """One update entity per installed store add-on that also is an add-on device."""
     coordinator = entry.runtime_data
-    known: set[str] = set()
+    known = Known()
 
     @callback
     def _add_new() -> None:
@@ -32,8 +32,7 @@ async def async_setup_entry(
         for item in data.raw.get("store") or []:
             name = item.get("name")
             if item.get("installed") and name in data.addons and name not in known:
-                known.add(name)
-                new.append(HishoAddonUpdate(coordinator, name))
+                new.append(known.add(name, HishoAddonUpdate(coordinator, name)))
         if new:
             async_add_entities(new)
 

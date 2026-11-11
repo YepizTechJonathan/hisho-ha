@@ -17,7 +17,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import HishoConfigEntry, HishoCoordinator
-from .entity import HishoAddonEntity, HishoBoxEntity, HishoEntity, HishoMachineEntity, machine_items
+from .entity import HishoAddonEntity, HishoBoxEntity, HishoEntity, HishoMachineEntity, Known, machine_items
 
 PARALLEL_UPDATES = 1  # one press at a time: each is a real action on the fleet
 
@@ -81,7 +81,7 @@ async def async_setup_entry(
 ) -> None:
     """Add buttons as Hisho reports what can be pressed."""
     coordinator = entry.runtime_data
-    known: set[str] = set()
+    known = Known()
 
     @callback
     def _add_new() -> None:
@@ -90,8 +90,7 @@ async def async_setup_entry(
 
         def add(key: str, entity: ButtonEntity) -> None:
             if key not in known:
-                known.add(key)
-                new.append(entity)
+                new.append(known.add(key, entity))
 
         for desc in HUB_BUTTONS:
             if data.can(desc.action):

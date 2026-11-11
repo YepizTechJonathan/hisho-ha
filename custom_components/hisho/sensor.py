@@ -21,7 +21,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DEVICE_STATES, FOLDER_STATES, HEALTH_STATES, MACHINE_STATES, WORKER_STATES
 from .coordinator import HishoConfigEntry, HishoCoordinator, HishoData
-from .entity import HishoAddonEntity, HishoBoxEntity, HishoEntity, HishoMachineEntity
+from .entity import HishoAddonEntity, HishoBoxEntity, HishoEntity, HishoMachineEntity, Known
 
 PARALLEL_UPDATES = 0  # the coordinator does all the fetching
 
@@ -286,7 +286,7 @@ async def async_setup_entry(
     """Add the hub sensors, then each machine's, folder's and worker's as they appear."""
     coordinator = entry.runtime_data
     async_add_entities(HishoHubSensor(coordinator, d) for d in HUB_SENSORS)
-    known: set[str] = set()
+    known = Known()
 
     @callback
     def _add_new() -> None:
@@ -296,38 +296,30 @@ async def async_setup_entry(
             for desc in MACHINE_SENSORS:
                 key = f"machine:{machine_id}:{desc.key}"
                 if key not in known and desc.exists_fn(machine):
-                    known.add(key)
-                    new.append(HishoMachineSensor(coordinator, machine_id, desc))
+                    new.append(known.add(key, HishoMachineSensor(coordinator, machine_id, desc)))
         for folder_id in data.folders:
             if (key := f"folder:{folder_id}") not in known:
-                known.add(key)
-                new.append(HishoFolderSensor(coordinator, folder_id))
+                new.append(known.add(key, HishoFolderSensor(coordinator, folder_id)))
         for worker_id in data.workers:
             if (key := f"worker:{worker_id}") not in known:
-                known.add(key)
-                new.append(HishoWorkerSensor(coordinator, worker_id))
+                new.append(known.add(key, HishoWorkerSensor(coordinator, worker_id)))
         for machine_id in data.machines:
             if (data.controls.get(machine_id) or {}).get("power") and (key := f"awake:{machine_id}") not in known:
-                known.add(key)
-                new.append(HishoAwakeSensor(coordinator, machine_id))
+                new.append(known.add(key, HishoAwakeSensor(coordinator, machine_id)))
         for machine_id in data.parental:
             for kind in ("time_left", "played_today"):
                 if machine_id in data.machines and (key := f"parental:{machine_id}:{kind}") not in known:
-                    known.add(key)
-                    new.append(HishoParentalSensor(coordinator, machine_id, kind))
+                    new.append(known.add(key, HishoParentalSensor(coordinator, machine_id, kind)))
         for device_id, box in data.devices.items():
             for kind in ("state", "health"):
                 if (key := f"box:{device_id}:{kind}") not in known:
-                    known.add(key)
-                    new.append(HishoBoxSensor(coordinator, device_id, kind))
+                    new.append(known.add(key, HishoBoxSensor(coordinator, device_id, kind)))
             for item in box.get("items") or []:
                 if (key := f"box:{device_id}:item:{item['addon']}:{item['entry']}:{item['id']}") not in known:
-                    known.add(key)
-                    new.append(HishoBoxItemSensor(coordinator, device_id, item))
+                    new.append(known.add(key, HishoBoxItemSensor(coordinator, device_id, item)))
         for name in data.addons:
             if (key := f"addon:{name}") not in known:
-                known.add(key)
-                new.append(HishoAddonStatus(coordinator, name))
+                new.append(known.add(key, HishoAddonStatus(coordinator, name)))
         if new:
             async_add_entities(new)
 
