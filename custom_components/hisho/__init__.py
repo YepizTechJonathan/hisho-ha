@@ -19,6 +19,7 @@ from .const import DOMAIN
 from .coordinator import HishoConfigEntry, HishoCoordinator
 from .entity import hub_device_info
 from .services import async_setup_services
+from .theme import async_setup_theme
 from .websocket import async_setup_websocket
 
 PLATFORMS: list[Platform] = [
@@ -45,7 +46,7 @@ _LOGGER = logging.getLogger(__name__)
 CARDS_FILE = ("www", "community", "hisho-ha-cards", "hisho-ha-cards.js")
 CARDS_URL = "/hacsfiles/hisho-ha-cards/hisho-ha-cards.js"
 
-# Pictures for the Hisho dashboard (its background), served at /hisho_static/... The cards are a separate HACS
+# Pictures for the Hisho dashboard (its background) and the Hisho theme's fonts, served at /hisho_static/... The cards are a separate HACS
 # download that ships only their script, so the pictures come with the integration.
 STATIC_URL = "/hisho_static"
 STATIC_DIR = Path(__file__).parent / "www"
@@ -80,11 +81,12 @@ async def async_load_cards_early(hass: HomeAssistant) -> str | None:
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register Hisho's services and admin websocket commands (once, for every entry), serve the dashboard's
-    pictures, load the cards early."""
+    pictures and fonts, load the cards early, add the Hisho theme."""
     async_setup_services(hass)
     async_setup_websocket(hass)
     await async_serve_static(hass)
     await async_load_cards_early(hass)
+    await async_setup_theme(hass)
     return True
 
 

@@ -39,6 +39,12 @@ watched (a pool, a VM, updates) · its add-on buttons (start/shut down a VM...) 
 **Each add-on**: Status (ok / needs a look / problem / needs setup / off) · Enabled · Maintenance ·
 its actions.
 
+**The Hisho theme** (1.20.0): Hisho's look for any dashboard: warm black, crimson, Shippori Mincho headings, Inter
+Tight text, IBM Plex Mono numbers, hairlines instead of card boxes (with card-mod installed). Pick it in Profile ›
+Theme, or put `theme: Hisho` on a view; the Hisho dashboard ([hisho-ha-cards](https://github.com/YepizTechJonathan/hisho-ha-cards))
+uses it by itself. The integration adds it to Home Assistant's themes and serves its fonts (SIL Open Font License),
+so there is nothing to copy into configuration.yaml; a theme of your own named Hisho there wins.
+
 Buttons that power something off or remove something start **disabled**: enabling one is your yes.
 Hisho refuses those actions unless they are confirmed.
 
