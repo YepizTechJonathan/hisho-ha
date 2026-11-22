@@ -366,7 +366,7 @@ async def test_network_gear_only_on_request(
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"show_network": True})
     await hass.async_block_till_done()
-    assert config_entry.options == {"show_network": True}
+    assert config_entry.options["show_network"] is True and config_entry.options["read_aloud"] is False
     assert devices.async_get_device_by_identifier(switch_id, config_entry.entry_id).name == "KidsRoom Switch"
 
 
@@ -696,3 +696,34 @@ async def test_the_game_cache_sensors_unavailable_when_unread(
     aioclient_mock.get(SNAPSHOT_URL, json=data)
     await setup_entry(hass, config_entry)
     assert hass.states.get(_eid(hass, "sensor", "game_cache_used")).state == STATE_UNAVAILABLE
+
+
+async def test_read_aloud_speaks_on_the_chosen_speaker_only_when_turned_on(
+    hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry
+) -> None:
+    """hisho.read_aloud speaks with tts.speak on the options' speaker; off (the default) it refuses."""
+    await setup_entry(hass, config_entry)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call("hisho", "read_aloud", {"message": "Hello."}, blocking=True)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"show_network": False, "read_aloud": True})
+    assert result["errors"] == {"read_aloud_speaker": "speaker_needed"}  # on without a speaker: asked again
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"show_network": False, "read_aloud": True, "read_aloud_speaker": "media_player.office"})
+    await hass.async_block_till_done()
+
+    spoken: list[dict[str, Any]] = []
+
+    async def speak(call: Any) -> None:
+        spoken.append(dict(call.data))
+
+    hass.services.async_register("tts", "speak", speak)
+    answer = await hass.services.async_call("hisho", "read_aloud", {"message": "The build passed."},
+                                            blocking=True, return_response=True)
+    assert spoken == [{"entity_id": "tts.hisho_voice", "media_player_entity_id": "media_player.office",
+                       "message": "The build passed.", "cache": False}]
+    assert answer == {"speaker": "media_player.office", "voice": "tts.hisho_voice"}
+    await hass.services.async_call("hisho", "read_aloud", {"message": "Hi.", "speaker": "media_player.kitchen"},
+                                   blocking=True)
+    assert spoken[-1]["media_player_entity_id"] == "media_player.kitchen"

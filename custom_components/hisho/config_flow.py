@@ -33,6 +33,8 @@ from homeassistant.const import CONF_TOKEN, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.helpers import instance_id
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    EntitySelector,
+    EntitySelectorConfig,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -47,7 +49,15 @@ from .api import (
     HishoPairingBusyError,
     HishoUnsupportedError,
 )
-from .const import CONF_SHOW_NETWORK, DOMAIN, PAIR_TIMEOUT_SECONDS
+from .const import (
+    CONF_READ_ALOUD,
+    CONF_READ_ALOUD_SPEAKER,
+    CONF_READ_ALOUD_VOICE,
+    CONF_SHOW_NETWORK,
+    DEFAULT_READ_ALOUD_VOICE,
+    DOMAIN,
+    PAIR_TIMEOUT_SECONDS,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -292,16 +302,28 @@ class HishoOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Network gear on or off."""
+        options = self.config_entry.options
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            if user_input.get(CONF_READ_ALOUD) and not user_input.get(CONF_READ_ALOUD_SPEAKER):
+                errors[CONF_READ_ALOUD_SPEAKER] = "speaker_needed"
+            else:
+                return self.async_create_entry(data=user_input)
+        speaker = options.get(CONF_READ_ALOUD_SPEAKER)
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
+                    vol.Required(CONF_SHOW_NETWORK, default=options.get(CONF_SHOW_NETWORK, False)): bool,
+                    vol.Required(CONF_READ_ALOUD, default=options.get(CONF_READ_ALOUD, False)): bool,
+                    vol.Optional(
+                        CONF_READ_ALOUD_SPEAKER, **({"default": speaker} if speaker else {})
+                    ): EntitySelector(EntitySelectorConfig(domain="media_player")),
                     vol.Required(
-                        CONF_SHOW_NETWORK, default=self.config_entry.options.get(CONF_SHOW_NETWORK, False)
-                    ): bool
+                        CONF_READ_ALOUD_VOICE, default=options.get(CONF_READ_ALOUD_VOICE, DEFAULT_READ_ALOUD_VOICE)
+                    ): EntitySelector(EntitySelectorConfig(domain="tts")),
                 }
             ),
+            errors=errors,
         )
 

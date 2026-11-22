@@ -424,6 +424,12 @@
     },
     "calendar_repeating": {
       "message": "Repeating events are made on your phone (its calendar app), not here."
+    },
+    "read_aloud_off": {
+      "message": "Read aloud is off. Turn it on in the Hisho integration's options."
+    },
+    "read_aloud_no_speaker": {
+      "message": "No read aloud speaker is set. Pick one in the Hisho integration's options."
     }
   },
   "services": {
@@ -618,6 +624,24 @@
           "description": "Play hours: the hour play ends (1-24; 24 = midnight)."
         }
       }
+    },
+    "read_aloud": {
+      "name": "Read aloud",
+      "description": "Speak one of Hisho's replies on the read aloud speaker chosen in the integration's options.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hisho",
+          "description": "Which Hisho, when there is more than one."
+        },
+        "message": {
+          "name": "Message",
+          "description": "The text to speak."
+        },
+        "speaker": {
+          "name": "Speaker",
+          "description": "Play on this media player instead of the one in the options."
+        }
+      }
     }
   },
   "selector": {
@@ -659,14 +683,23 @@
   "options": {
     "step": {
       "init": {
-        "title": "What to show from Hisho",
+        "title": "Hisho options",
         "data": {
-          "show_network": "Show network devices"
+          "show_network": "Show network devices",
+          "read_aloud": "Read aloud on a speaker",
+          "read_aloud_speaker": "Read aloud speaker",
+          "read_aloud_voice": "Read aloud voice"
         },
         "data_description": {
-          "show_network": "Switches, access points and cameras Hisho's add-ons see (UniFi...). Off by default: Home Assistant's own integrations usually show them already."
+          "show_network": "Switches, access points and cameras Hisho's add-ons see (UniFi...). Off by default: Home Assistant's own integrations usually show them already.",
+          "read_aloud": "Hisho's replies are spoken on the speaker below (the hisho.read_aloud action). Off by default: replies then play on the device you are using.",
+          "read_aloud_speaker": "The media player that reads replies, such as a Google speaker, a TV, or a Dante speaker.",
+          "read_aloud_voice": "The text-to-speech voice. Hisho's own voice (tts.hisho_voice) is the one read aloud uses on the desktop."
         }
       }
+    },
+    "error": {
+      "speaker_needed": "Pick a speaker to turn read aloud on."
     }
   }
 }

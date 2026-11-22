@@ -9,6 +9,11 @@ DOMAIN: Final = "hisho"
 MANUFACTURER: Final = "Hisho"
 
 CONF_SHOW_NETWORK: Final = "show_network"
+# Read aloud: Hisho's replies spoken on a Home Assistant speaker (off unless turned on in the options).
+CONF_READ_ALOUD: Final = "read_aloud"
+CONF_READ_ALOUD_SPEAKER: Final = "read_aloud_speaker"
+CONF_READ_ALOUD_VOICE: Final = "read_aloud_voice"
+DEFAULT_READ_ALOUD_VOICE: Final = "tts.hisho_voice"
 
 SNAPSHOT_PATH: Final = "/api/ha/snapshot"
 PAIR_PATH: Final = "/api/ha/pair"

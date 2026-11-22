@@ -296,6 +296,9 @@
     },
     "parental": {
       "service": "mdi:human-male-child"
+    },
+    "read_aloud": {
+      "service": "mdi:account-voice"
     }
   }
 }

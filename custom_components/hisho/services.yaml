@@ -1,3 +1,19 @@
+read_aloud:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: hisho
+    message:
+      required: true
+      example: The build passed and the release is out.
+      selector:
+        text:
+          multiline: true
+    speaker:
+      selector:
+        entity:
+          domain: media_player
 run_action:
   fields:
     config_entry_id:

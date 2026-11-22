@@ -18,7 +18,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import async_register_admin_service
 
 from .api import HishoError
-from .const import DOMAIN
+from .const import CONF_READ_ALOUD, CONF_READ_ALOUD_SPEAKER, CONF_READ_ALOUD_VOICE, DEFAULT_READ_ALOUD_VOICE, DOMAIN
 from .coordinator import HishoCoordinator
 
 ATTR_ENTRY = "config_entry_id"
@@ -66,6 +66,15 @@ CREATE_JOB_SCHEMA = vol.Schema(
         vol.Required("kind"): cv.string,
         vol.Optional("worker"): cv.string,
         vol.Optional("meta", default={}): dict,
+    }
+)
+
+
+READ_ALOUD_SCHEMA = vol.Schema(
+    {
+        **BASE,
+        vol.Required("message"): vol.All(cv.string, vol.Length(min=1)),
+        vol.Optional("speaker"): cv.entity_id,
     }
 )
 
@@ -196,7 +205,25 @@ def async_setup_services(hass: HomeAssistant) -> None:
         return _response(await _coordinator(hass, call).async_action(
             f"parental.{control}", call.data["machine"], args, confirm=control in ("stop", "off"), context=call.context))
 
+    async def read_aloud(call: ServiceCall) -> ServiceResponse:
+        # Speaks one of Hisho's replies on the speaker chosen in the options, in the voice chosen there
+        # (Hisho's own, tts.hisho_voice, by default). Off unless the owner turned it on.
+        options = _coordinator(hass, call).config_entry.options
+        if not options.get(CONF_READ_ALOUD):
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="read_aloud_off")
+        speaker = call.data.get("speaker") or options.get(CONF_READ_ALOUD_SPEAKER)
+        if not speaker:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="read_aloud_no_speaker")
+        voice = options.get(CONF_READ_ALOUD_VOICE) or DEFAULT_READ_ALOUD_VOICE
+        await hass.services.async_call(
+            "tts", "speak",
+            {"entity_id": voice, "media_player_entity_id": speaker, "message": call.data["message"], "cache": False},
+            blocking=True, context=call.context,
+        )
+        return {"speaker": speaker, "voice": voice}
+
     for name, handler, schema in (
+        ("read_aloud", read_aloud, READ_ALOUD_SCHEMA),
         ("run_action", run_action, RUN_ACTION_SCHEMA),
         ("alert", alert, ALERT_SCHEMA),
         ("maintenance", maintenance, MAINTENANCE_SCHEMA),
