@@ -44,6 +44,15 @@ def _souko_check(check: dict[str, Any] | None) -> str | None:
     return "passed" if check.get("ok") else "problems"
 
 
+def _after_check(check: dict[str, Any] | None) -> str | None:
+    """The after-check (Core 2026-11-23+): unknown until one has run."""
+    if not check or (check.get("ok") is None and not check.get("running")):
+        return None
+    if check.get("running"):
+        return "running"
+    return "as_expected" if check.get("ok") else "needs_a_look"
+
+
 def _cache(data: HishoData) -> dict[str, Any]:
     """The LAN game cache (Hisho reads it from the NAS at most every 5 minutes); empty when it can't be read."""
     cache = data.raw.get("game_cache") or {}
@@ -154,6 +163,14 @@ HUB_SENSORS: tuple[HishoHubSensorDescription, ...] = (
         options=["passed", "problems", "running"],
         # Check my Souko (Core 2026-11-01+): unknown until it has run once, or on a machine not from the image.
         value_fn=lambda d: _souko_check(d.raw.get("souko_check")),
+    ),
+    HishoHubSensorDescription(
+        key="after_check",
+        translation_key="after_check",
+        device_class=SensorDeviceClass.ENUM,
+        options=["as_expected", "needs_a_look", "running"],
+        # Everything looked at once after Kihon starts, a maintenance window ends or an update run finishes.
+        value_fn=lambda d: _after_check(d.raw.get("after_check")),
     ),
     HishoHubSensorDescription(
         key="image_test",
@@ -372,6 +389,9 @@ class HishoHubSensor(HishoEntity, SensorEntity):
             return {k: gate.get(k) for k in ("image", "passed", "failed", "failed_checks", "at")} if gate else None
         if key == "done_for_you":
             return {"items": [{k: i.get(k) for k in ("at", "event", "text")} for i in data.raw.get("activity") or []]}
+        if key == "after_check":
+            check = data.raw.get("after_check") or {}
+            return {k: check.get(k) for k in ("summary", "at", "for_you", "reasons", "problems")}
         if key == "souko_check":
             check = data.raw.get("souko_check") or {}
             return {"at": check.get("at"), "passed": check.get("passed"), "failed": check.get("failed"),

@@ -623,7 +623,11 @@ async def test_setup_parity_with_the_dashboard(
     surfaces.py); Move to Kihon on the add-on, disabled like the dashboard's confirm."""
     from homeassistant.core import Context
 
-    snapshot_data["allowed"] += ["check.run", "trust.start", "trust.end", "companion.move"]
+    snapshot_data["allowed"] += ["check.run", "trust.start", "trust.end", "companion.move", "after_check.run"]
+    snapshot_data["after_check"] = {"at": 1795468800.0, "ok": False, "summary": "1 thing to look at, 1 for you",
+                                    "running": False, "for_you": 1, "reasons": ["Kihon started"],
+                                    "problems": [{"section": "Home Assistant", "text": "speaker1 went unavailable",
+                                                  "who": "you"}]}
     snapshot_data["souko_check"] = {"at": "2026-11-01T03:00:00+00:00", "ok": False, "passed": 9, "failed": 1,
                                     "checks": [{"name": "Logins in your password vault", "ok": False,
                                                 "detail": "1 login not in Vaultwarden yet", "fix": "Save to Vaultwarden"}]}
@@ -645,6 +649,8 @@ async def test_setup_parity_with_the_dashboard(
     aioclient_mock.post(ACTION_URL, json={"ok": True})
     await setup_entry(hass, config_entry)
 
+    after = hass.states.get(_eid(hass, "sensor", "after_check"))
+    assert after.state == "needs_a_look" and after.attributes["problems"][0]["text"] == "speaker1 went unavailable"
     check = hass.states.get(_eid(hass, "sensor", "souko_check"))
     assert check.state == "problems" and check.attributes["checks"][0]["fix"] == "Save to Vaultwarden"
     image = hass.states.get(_eid(hass, "sensor", "image_test"))
@@ -657,7 +663,7 @@ async def test_setup_parity_with_the_dashboard(
     assert trust.attributes["opened_by"] == "souko: Home Assistant user Jonathan"     # who turned it on
     assert trust.attributes["recent"][0]["commands_total"] == 4 and "commands" not in trust.attributes["recent"][0]
 
-    for key in ("check_souko", "trust_end"):
+    for key in ("check_souko", "trust_end", "run_after_check"):
         await hass.services.async_call("button", "press", {"entity_id": _eid(hass, "button", key)}, blocking=True)
     move = _eid(hass, "button", "addon_email_move_to_core")
     assert er.async_get(hass).async_get(move).disabled_by is not None

@@ -225,6 +225,14 @@
         "name": "Add-on updates",
         "unit_of_measurement": "updates"
       },
+      "after_check": {
+        "name": "After-check",
+        "state": {
+          "as_expected": "All as expected",
+          "needs_a_look": "Needs a look",
+          "running": "Checking"
+        }
+      },
       "souko_check": {
         "name": "Check my Souko",
         "state": {
@@ -295,6 +303,9 @@
       },
       "check_souko": {
         "name": "Check my Souko"
+      },
+      "run_after_check": {
+        "name": "Run the after-check"
       },
       "trust_end": {
         "name": "End trust window"

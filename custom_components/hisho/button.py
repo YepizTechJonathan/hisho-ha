@@ -40,6 +40,7 @@ HUB_BUTTONS = (
         key="reap_jobs", translation_key="reap_jobs", action="jobs.reap", entity_category=EntityCategory.CONFIG
     ),
     HishoButtonDescription(key="check_souko", translation_key="check_souko", action="check.run"),
+    HishoButtonDescription(key="run_after_check", translation_key="run_after_check", action="after_check.run"),
     HishoButtonDescription(key="trust_end", translation_key="trust_end", action="trust.end"),
 )
 MOVE = HishoButtonDescription(key="move_to_core", translation_key="move_to_core", action="companion.move", danger=True)
