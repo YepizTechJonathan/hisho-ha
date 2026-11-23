@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 import json
 from typing import Any
@@ -19,6 +20,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
+from custom_components.hisho import services
 from custom_components.hisho.const import DOMAIN
 
 from .conftest import SNAPSHOT_URL, URL, setup_entry
@@ -699,9 +701,9 @@ async def test_the_game_cache_sensors_unavailable_when_unread(
 
 
 async def test_read_aloud_speaks_on_the_chosen_speaker_only_when_turned_on(
-    hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry
+    hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """hisho.read_aloud speaks with tts.speak on the options' speaker; off (the default) it refuses."""
+    """hisho.read_aloud speaks on the options' speaker, one reply after another; off (the default) it refuses."""
     await setup_entry(hass, config_entry)
     with pytest.raises(ServiceValidationError):
         await hass.services.async_call("hisho", "read_aloud", {"message": "Hello."}, blocking=True)
@@ -715,15 +717,24 @@ async def test_read_aloud_speaks_on_the_chosen_speaker_only_when_turned_on(
 
     spoken: list[dict[str, Any]] = []
 
-    async def speak(call: Any) -> None:
+    async def speak_and_play(call: Any) -> None:
         spoken.append(dict(call.data))
+        hass.states.async_set(call.data["media_player_entity_id"], "playing")
 
-    hass.services.async_register("tts", "speak", speak)
+    hass.services.async_register("tts", "speak", speak_and_play)
+    monkeypatch.setattr(services, "READ_ALOUD_POLL", 0.01)
     answer = await hass.services.async_call("hisho", "read_aloud", {"message": "The build passed."},
                                             blocking=True, return_response=True)
+    assert answer["speaker"] == "media_player.office" and answer["voice"] == "tts.hisho_voice"
+    await asyncio.sleep(0.05)
     assert spoken == [{"entity_id": "tts.hisho_voice", "media_player_entity_id": "media_player.office",
                        "message": "The build passed.", "cache": False}]
-    assert answer == {"speaker": "media_player.office", "voice": "tts.hisho_voice"}
+    await hass.services.async_call("hisho", "read_aloud", {"message": "Next reply."}, blocking=True)
     await hass.services.async_call("hisho", "read_aloud", {"message": "Hi.", "speaker": "media_player.kitchen"},
                                    blocking=True)
-    assert spoken[-1]["media_player_entity_id"] == "media_player.kitchen"
+    await asyncio.sleep(0.05)
+    # the kitchen plays at once; the office's next reply waits while the first is still playing
+    assert [s["message"] for s in spoken] == ["The build passed.", "Hi."]
+    hass.states.async_set("media_player.office", "idle")
+    await asyncio.sleep(0.05)
+    assert [s["message"] for s in spoken] == ["The build passed.", "Hi.", "Next reply."]

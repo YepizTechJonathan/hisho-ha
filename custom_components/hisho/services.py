@@ -7,6 +7,8 @@ the everyday ones with friendlier fields.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Any
 
 import voluptuous as vol
@@ -22,6 +24,15 @@ from .const import CONF_READ_ALOUD, CONF_READ_ALOUD_SPEAKER, CONF_READ_ALOUD_VOI
 from .coordinator import HishoCoordinator
 
 ATTR_ENTRY = "config_entry_id"
+
+_LOGGER = logging.getLogger(__name__)
+
+# Read aloud plays one reply at a time per speaker: tts.speak returns once playing starts, so the next
+# reply waits until the speaker stops (or the longest the reply could take, if the speaker never says).
+READ_ALOUD_START = 10.0  # s a speaker may take to start playing
+READ_ALOUD_PACE = 10.0   # characters spoken per second, at the slowest
+READ_ALOUD_POLL = 0.5    # s between looks at the speaker
+READ_ALOUD_QUEUES = f"{DOMAIN}_read_aloud"   # hass.data: speaker -> its queue
 
 BASE = {vol.Optional(ATTR_ENTRY): cv.string}
 
@@ -127,6 +138,33 @@ def _response(result: Any) -> ServiceResponse:
 
 
 @callback
+async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: asyncio.Queue) -> None:
+    """Speak what is queued for one speaker, each reply after the one before has finished."""
+    loop = asyncio.get_running_loop()
+    while True:
+        voice, message, context = await queue.get()
+        try:
+            await hass.services.async_call(
+                "tts", "speak",
+                {"entity_id": voice, "media_player_entity_id": speaker, "message": message, "cache": False},
+                blocking=True, context=context,
+            )
+            begun = loop.time()
+            deadline = begun + READ_ALOUD_START + len(message) / READ_ALOUD_PACE
+            started = False
+            while loop.time() < deadline:
+                state = hass.states.get(speaker)
+                if state is not None and state.state in ("playing", "buffering"):
+                    started = True
+                elif started or loop.time() > begun + READ_ALOUD_START:
+                    break
+                await asyncio.sleep(READ_ALOUD_POLL)
+        except Exception:  # one reply that can't be spoken must not stop the ones after it
+            _LOGGER.exception("read aloud on %s failed", speaker)
+        finally:
+            queue.task_done()
+
+
 def async_setup_services(hass: HomeAssistant) -> None:
     """Register the services."""
 
@@ -215,12 +253,13 @@ def async_setup_services(hass: HomeAssistant) -> None:
         if not speaker:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="read_aloud_no_speaker")
         voice = options.get(CONF_READ_ALOUD_VOICE) or DEFAULT_READ_ALOUD_VOICE
-        await hass.services.async_call(
-            "tts", "speak",
-            {"entity_id": voice, "media_player_entity_id": speaker, "message": call.data["message"], "cache": False},
-            blocking=True, context=call.context,
-        )
-        return {"speaker": speaker, "voice": voice}
+        queues: dict[str, asyncio.Queue] = hass.data.setdefault(READ_ALOUD_QUEUES, {})
+        queue = queues.get(speaker)
+        if queue is None:
+            queue = queues[speaker] = asyncio.Queue()
+            hass.async_create_background_task(_read_aloud_worker(hass, speaker, queue), f"hisho read aloud {speaker}")
+        queue.put_nowait((voice, call.data["message"], call.context))
+        return {"speaker": speaker, "voice": voice, "waiting": queue.qsize()}
 
     for name, handler, schema in (
         ("read_aloud", read_aloud, READ_ALOUD_SCHEMA),
