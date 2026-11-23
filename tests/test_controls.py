@@ -896,6 +896,16 @@ async def test_read_aloud_times_each_message_by_its_measured_speech(
     await asyncio.sleep(0.05)
     assert played == [0.15, 0.3, 0.3]
 
+    # more: the rest of the reply is still on its way, so its start waits for it instead of playing alone
+    monkeypatch.setattr(services, "READ_ALOUD_POLL", 0.01)
+    await asyncio.sleep(0.4)
+    await hass.services.async_call("hisho", "read_aloud", {"message": "Six.", "more": True}, blocking=True)
+    await asyncio.sleep(0.05)
+    assert played == [0.15, 0.3, 0.3]   # Six. waits: more is coming
+    await hass.services.async_call("hisho", "read_aloud", {"message": "Seven."}, blocking=True)
+    await asyncio.sleep(0.05)
+    assert played == [0.15, 0.3, 0.3, 0.3]
+
 
 async def test_read_aloud_clips_are_served_to_the_speaker(hass: HomeAssistant, hass_client_no_auth: Any) -> None:
     """The speaker fetches a joined clip from Home Assistant without logging in; an unknown name is not found."""

@@ -52,8 +52,8 @@ READ_ALOUD_PACE = 10.0   # characters spoken per second, at the slowest
 READ_ALOUD_POLL = 0.1    # s between looks at the speaker (the next sentence starts this soon after)
 READ_ALOUD_LEAD = 0.6    # s a speaker takes from play_media to sound (it fetches and buffers first)
 READ_ALOUD_TAIL = 0.2    # s of quiet after a sentence's measured end before the next is sent
-READ_ALOUD_FIRST = 4.0   # s of speech a clip waits for (when more is being made behind it) before it plays
-READ_ALOUD_HOLD = 3.0    # s at most it waits for that: the next clip would start with a pause anyway
+READ_ALOUD_FIRST = 8.0   # s of speech a reply's first clip waits for (when more of it is coming) before it plays
+READ_ALOUD_HOLD = 3.0    # s at most it waits for that, from when its first sentence is ready
 READ_ALOUD_CLIP_MAX = 60.0   # s of speech joined into one clip at most (more waits for the next clip)
 READ_ALOUD_FORMAT = {   # speech made as plain WAV in one format, so it can be joined (Kokoro's own rate)
     "preferred_format": "wav", "preferred_sample_rate": 24000, "preferred_sample_channels": 1,
@@ -130,6 +130,9 @@ READ_ALOUD_SCHEMA = vol.Schema(
         # so a reader's highlight moves with the voice instead of when the sentence is sent.
         vol.Optional("id"): cv.string,
         vol.Optional("await_start"): cv.string,
+        # more: more of the same reply follows (a reader sending it sentence by sentence), so its start waits
+        # a little to play with the rest in one clip.
+        vol.Optional("more", default=False): cv.boolean,
     }
 )
 
@@ -289,9 +292,10 @@ async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: _Waiting)
     speech is already made when one starts are joined on to it and played as one clip."""
     loop = asyncio.get_running_loop()
     cut: asyncio.Event = hass.data.setdefault(READ_ALOUD_CUT, {}).setdefault(speaker, asyncio.Event())
+    mid_reply = False   # the last clip ended inside a reply (more of it was coming)
     while True:
         batch = [await queue.get()]
-        voice, message, context, spoken, begins, ready = batch[0]
+        voice, message, context, _more, spoken, begins, ready = batch[0]
         cut.clear()
         try:
             try:
@@ -299,8 +303,16 @@ async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: _Waiting)
             except Exception:  # noqa: BLE001  # no measured speech: tts.speak, timed by the speaker's state
                 _LOGGER.debug("read aloud: could not make %r ahead", message, exc_info=True)
             else:
-                hold = loop.time() + READ_ALOUD_HOLD
-                while not queue.empty() and sum(s.seconds for s in speech) < READ_ALOUD_CLIP_MAX:
+                # a reply's start waits a little for the rest of it (on its way, or being made), so it plays as
+                # one clip; inside a reply the next clip doesn't wait (that would lengthen the pause it's in)
+                hold = loop.time() + (0 if mid_reply else READ_ALOUD_HOLD)
+                while sum(s.seconds for s in speech) < READ_ALOUD_CLIP_MAX:
+                    if queue.empty():
+                        if batch[-1][3] and sum(s.seconds for s in speech) < READ_ALOUD_FIRST \
+                                and loop.time() < hold and not cut.is_set():
+                            await asyncio.sleep(READ_ALOUD_POLL)
+                            continue
+                        break
                     behind = queue.peek()[-1]
                     if not behind.done():   # a short start waits a little for the speech behind it
                         if sum(s.seconds for s in speech) >= READ_ALOUD_FIRST or loop.time() >= hold:
@@ -311,7 +323,9 @@ async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: _Waiting)
                         break
                     batch.append(queue.get_nowait())
                     speech.append(behind.result())
+                mid_reply = batch[-1][3]
                 if cut.is_set():   # stopped while it waited
+                    mid_reply = False
                     continue
                 await hass.services.async_call(
                     "media_player", "play_media",
@@ -513,7 +527,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
         making: dict[str, asyncio.Task] = hass.data.setdefault(READ_ALOUD_MAKING, {})
         ready = making[speaker] = hass.async_create_task(
             _prepare_after(hass, making.get(speaker), voice, message), "hisho read aloud prepare")
-        queue.put_nowait((voice, message, call.context, spoken, begins, ready))
+        queue.put_nowait((voice, message, call.context, call.data["more"], spoken, begins, ready))
         waiting = queue.qsize()
         if call.data["wait"]:
             await spoken
