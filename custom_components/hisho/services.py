@@ -52,6 +52,8 @@ READ_ALOUD_PACE = 10.0   # characters spoken per second, at the slowest
 READ_ALOUD_POLL = 0.1    # s between looks at the speaker (the next sentence starts this soon after)
 READ_ALOUD_LEAD = 0.6    # s a speaker takes from play_media to sound (it fetches and buffers first)
 READ_ALOUD_TAIL = 0.2    # s of quiet after a sentence's measured end before the next is sent
+READ_ALOUD_FIRST = 4.0   # s of speech a clip waits for (when more is being made behind it) before it plays
+READ_ALOUD_HOLD = 3.0    # s at most it waits for that: the next clip would start with a pause anyway
 READ_ALOUD_CLIP_MAX = 60.0   # s of speech joined into one clip at most (more waits for the next clip)
 READ_ALOUD_FORMAT = {   # speech made as plain WAV in one format, so it can be joined (Kokoro's own rate)
     "preferred_format": "wav", "preferred_sample_rate": 24000, "preferred_sample_channels": 1,
@@ -297,13 +299,20 @@ async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: _Waiting)
             except Exception:  # noqa: BLE001  # no measured speech: tts.speak, timed by the speaker's state
                 _LOGGER.debug("read aloud: could not make %r ahead", message, exc_info=True)
             else:
+                hold = loop.time() + READ_ALOUD_HOLD
                 while not queue.empty() and sum(s.seconds for s in speech) < READ_ALOUD_CLIP_MAX:
                     behind = queue.peek()[-1]
-                    if not behind.done() or behind.cancelled() or behind.exception() is not None \
-                            or not speech[0].joins(behind.result()):
+                    if not behind.done():   # a short start waits a little for the speech behind it
+                        if sum(s.seconds for s in speech) >= READ_ALOUD_FIRST or loop.time() >= hold:
+                            break
+                        await asyncio.wait([behind], timeout=hold - loop.time())
+                        continue
+                    if behind.cancelled() or behind.exception() is not None or not speech[0].joins(behind.result()):
                         break
                     batch.append(queue.get_nowait())
                     speech.append(behind.result())
+                if cut.is_set():   # stopped while it waited
+                    continue
                 await hass.services.async_call(
                     "media_player", "play_media",
                     {"entity_id": speaker, "media_content_id": _clip(hass, speech), "media_content_type": "music",

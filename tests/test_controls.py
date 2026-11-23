@@ -839,6 +839,7 @@ async def test_read_aloud_times_each_message_by_its_measured_speech(
     await setup_entry(hass, config_entry)
     monkeypatch.setattr(services, "READ_ALOUD_TAIL", 0.0)
     monkeypatch.setattr(services, "READ_ALOUD_LEAD", 0.0)
+    monkeypatch.setattr(services, "READ_ALOUD_HOLD", 0.0)
     made: list[str] = []
     gates: dict[str, asyncio.Event] = {}
 
@@ -881,6 +882,19 @@ async def test_read_aloud_times_each_message_by_its_measured_speech(
     assert not started.done()      # Three. starts when Two.'s speech is over, inside the clip
     await asyncio.sleep(0.15)
     assert started.done()
+
+    # a short start waits a little for the speech being made behind it, and plays it in the same clip
+    monkeypatch.setattr(services, "READ_ALOUD_HOLD", 1.0)
+    await asyncio.sleep(0.1)
+    gates["Four."], gates["Five."] = asyncio.Event(), asyncio.Event()
+    for text in ("Four.", "Five."):
+        await hass.services.async_call("hisho", "read_aloud", {"message": text}, blocking=True)
+    gates["Four."].set()
+    await asyncio.sleep(0.05)
+    assert played == [0.15, 0.3]   # Four. holds for Five.
+    gates["Five."].set()
+    await asyncio.sleep(0.05)
+    assert played == [0.15, 0.3, 0.3]
 
 
 async def test_read_aloud_clips_are_served_to_the_speaker(hass: HomeAssistant, hass_client_no_auth: Any) -> None:
