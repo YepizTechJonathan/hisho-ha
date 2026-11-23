@@ -764,6 +764,12 @@ async def test_read_aloud_speaks_on_the_chosen_speaker_only_when_turned_on(
     await asyncio.sleep(0.1)
     assert started.done() and spoken[-1]["message"] == "Hello."
     hass.states.async_set("media_player.office", "idle")
+    count = len(spoken)
+    again = await hass.services.async_call("hisho", "read_aloud", {"message": "Hello.", "id": "s1"},
+                                           blocking=True, return_response=True)
+    await asyncio.sleep(0.05)
+    assert again["duplicate"] and len(spoken) == count               # a retried id is never said twice
+    hass.states.async_set("media_player.office", "idle")
     await asyncio.sleep(0.05)
     # wait answers once spoken; stop drops what waits and silences the speaker
     stopped: list[str] = []

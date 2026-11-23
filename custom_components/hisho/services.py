@@ -48,6 +48,7 @@ READ_ALOUD_QUEUES = f"{DOMAIN}_read_aloud"   # hass.data: speaker -> its queue
 READ_ALOUD_LAST = f"{DOMAIN}_read_aloud_last"   # hass.data: speaker -> the last reply sent to it, for repeat
 READ_ALOUD_CUT = f"{DOMAIN}_read_aloud_cut"     # hass.data: speaker -> set while a stop silences it
 READ_ALOUD_STARTED = f"{DOMAIN}_read_aloud_started"   # hass.data: message id -> done when it starts playing
+READ_ALOUD_SPOKEN = f"{DOMAIN}_read_aloud_spoken"     # hass.data: message id -> done when it has been spoken
 
 BASE = {vol.Optional(ATTR_ENTRY): cv.string}
 
@@ -375,6 +376,12 @@ def async_setup_services(hass: HomeAssistant) -> None:
                 except TimeoutError:
                     pass
             return {"speaker": speaker, "started": True}
+        ident = call.data.get("id")
+        done_by_id: dict[str, asyncio.Future] = hass.data.setdefault(READ_ALOUD_SPOKEN, {})
+        if ident and ident in done_by_id:   # sent again (a reader that retried): never said twice
+            if call.data["wait"]:
+                await asyncio.shield(done_by_id[ident])
+            return {"speaker": speaker, "voice": voice, "duplicate": True}
         last: dict[str, str] = hass.data.setdefault(READ_ALOUD_LAST, {})
         if call.data["repeat"]:
             message = last.get(speaker) or last.get("")   # follow me: the last reply, wherever it played
@@ -390,10 +397,11 @@ def async_setup_services(hass: HomeAssistant) -> None:
             hass.async_create_background_task(_read_aloud_worker(hass, speaker, queue), f"hisho read aloud {speaker}")
         spoken: asyncio.Future = hass.loop.create_future()
         begins = hass.loop.create_future()
-        if ident := call.data.get("id"):
-            starts[ident] = begins
-            while len(starts) > 50:   # only the latest messages are asked about
-                starts.pop(next(iter(starts)))
+        if ident:
+            starts[ident], done_by_id[ident] = begins, spoken
+            for kept in (starts, done_by_id):
+                while len(kept) > 200:   # only the latest messages are asked about
+                    kept.pop(next(iter(kept)))
         # the speech is made now, while what is ahead of it plays: no gap for making it later
         ready = hass.async_create_task(_prepare(hass, voice, message), "hisho read aloud prepare")
         queue.put_nowait((voice, message, call.context, spoken, begins, ready))
