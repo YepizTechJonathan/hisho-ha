@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+import io
 import json
 from typing import Any
 from unittest.mock import AsyncMock, patch
+import wave
 
 from freezegun.api import FrozenDateTimeFactory
 import pytest
@@ -16,6 +18,7 @@ from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.setup import async_setup_component
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
@@ -825,31 +828,63 @@ async def test_read_aloud_follows_the_owner_from_room_to_room(
 async def test_read_aloud_times_each_message_by_its_measured_speech(
     hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Speech made ahead is played with play_media and lasts its measured length, whatever the speaker reports."""
+    """Speech made ahead is played with play_media and lasts its measured length, whatever the speaker reports;
+    speech already made behind the playing message is joined on to the next clip, so it plays without a gap."""
     await setup_entry(hass, config_entry)
     monkeypatch.setattr(services, "READ_ALOUD_TAIL", 0.0)
     monkeypatch.setattr(services, "READ_ALOUD_LEAD", 0.0)
     made: list[str] = []
+    gates: dict[str, asyncio.Event] = {}
 
-    async def prepare(hass_: HomeAssistant, voice: str, message: str) -> tuple[str, float]:
+    async def prepare(hass_: HomeAssistant, voice: str, message: str) -> services._Speech:
         made.append(message)
-        return f"media-source://tts/{message}", 0.15
+        if message in gates:
+            await gates[message].wait()
+        return services._Speech(b"\0\0" * int(24000 * 0.15), 24000, 2, 1)   # 0.15 s
 
     monkeypatch.setattr(services, "_prepare", prepare)
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
     await hass.config_entries.options.async_configure(
         result["flow_id"], {"show_network": False, "read_aloud": True, "read_aloud_speaker": "media_player.office"})
     await hass.async_block_till_done()
-    played: list[str] = []
+    played: list[float] = []   # seconds of speech in each clip
 
     async def play_media(call: Any) -> None:
-        played.append(call.data["media_content_id"])
+        token = call.data["media_content_id"].rsplit("/", 1)[1].removesuffix(".wav")
+        with wave.open(io.BytesIO(hass.data[services.READ_ALOUD_CLIPS][token])) as wav:
+            played.append(round(wav.getnframes() / wav.getframerate(), 2))
         hass.states.async_set("media_player.office", "idle")   # what the Satellite1 says mid-sentence
 
     hass.services.async_register("media_player", "play_media", play_media)
-    await hass.services.async_call("hisho", "read_aloud", {"message": "One."}, blocking=True)
-    await hass.services.async_call("hisho", "read_aloud", {"message": "Two."}, blocking=True)
+    gates["One."], gates["Two."] = asyncio.Event(), asyncio.Event()
+    for text in ("One.", "Two.", "Three."):
+        await hass.services.async_call("hisho", "read_aloud", {"message": text, "id": text}, blocking=True)
     await asyncio.sleep(0.05)
-    assert made == ["One.", "Two."] and played == ["media-source://tts/One."]   # Two. made, waiting its turn
-    await asyncio.sleep(0.2)
-    assert played == ["media-source://tts/One.", "media-source://tts/Two."]
+    assert made == ["One."] and played == []   # made one at a time, in order: Two. waits for One.
+    gates["One."].set()
+    await asyncio.sleep(0.02)
+    assert played == [0.15]        # One. plays alone: Two.'s speech isn't made yet
+    gates["Two."].set()
+    await asyncio.sleep(0.03)
+    assert made == ["One.", "Two.", "Three."]   # the others made while One. plays
+    await asyncio.sleep(0.15)
+    assert played == [0.15, 0.3]   # Two. and Three. joined into one clip
+    started = hass.async_create_task(hass.services.async_call(
+        "hisho", "read_aloud", {"await_start": "Three."}, blocking=True, return_response=True))
+    await asyncio.sleep(0.05)
+    assert not started.done()      # Three. starts when Two.'s speech is over, inside the clip
+    await asyncio.sleep(0.15)
+    assert started.done()
+
+
+async def test_read_aloud_clips_are_served_to_the_speaker(hass: HomeAssistant, hass_client_no_auth: Any) -> None:
+    """The speaker fetches a joined clip from Home Assistant without logging in; an unknown name is not found."""
+    assert await async_setup_component(hass, "http", {})
+    hass.http.register_view(services.ReadAloudClipView)
+    url = services._clip(hass, [services._Speech(b"\1\0" * 2400, 24000, 2, 1)] * 2)
+    client = await hass_client_no_auth()
+    answer = await client.get(url)
+    assert answer.status == 200 and answer.content_type == "audio/wav"
+    with wave.open(io.BytesIO(await answer.read())) as wav:
+        assert wav.getnframes() == 4800 and wav.getframerate() == 24000
+    assert (await client.get(f"{services.READ_ALOUD_CLIP_URL}/nothing.wav")).status == 404

@@ -8,11 +8,19 @@ the everyday ones with friendlier fields.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
+from http import HTTPStatus
+import io
 import logging
+import secrets
 from typing import Any
+import wave
+
+from aiohttp import web
 
 import voluptuous as vol
 
+from homeassistant.components.http import KEY_HASS, HomeAssistantView
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -44,7 +52,16 @@ READ_ALOUD_PACE = 10.0   # characters spoken per second, at the slowest
 READ_ALOUD_POLL = 0.1    # s between looks at the speaker (the next sentence starts this soon after)
 READ_ALOUD_LEAD = 0.6    # s a speaker takes from play_media to sound (it fetches and buffers first)
 READ_ALOUD_TAIL = 0.2    # s of quiet after a sentence's measured end before the next is sent
+READ_ALOUD_CLIP_MAX = 60.0   # s of speech joined into one clip at most (more waits for the next clip)
+READ_ALOUD_FORMAT = {   # speech made as plain WAV in one format, so it can be joined (Kokoro's own rate)
+    "preferred_format": "wav", "preferred_sample_rate": 24000, "preferred_sample_channels": 1,
+    "preferred_sample_bytes": 2,
+}
+READ_ALOUD_CLIP_URL = f"/api/{DOMAIN}/read_aloud"
+READ_ALOUD_CLIPS_KEPT = 20   # the latest clips stay fetchable (a speaker that retries its fetch finds them)
 READ_ALOUD_QUEUES = f"{DOMAIN}_read_aloud"   # hass.data: speaker -> its queue
+READ_ALOUD_CLIPS = f"{DOMAIN}_read_aloud_clips"     # hass.data: clip token -> WAV bytes
+READ_ALOUD_MAKING = f"{DOMAIN}_read_aloud_making"   # hass.data: speaker -> the speech being made last
 READ_ALOUD_LAST = f"{DOMAIN}_read_aloud_last"   # hass.data: speaker -> the last reply sent to it, for repeat
 READ_ALOUD_CUT = f"{DOMAIN}_read_aloud_cut"     # hass.data: speaker -> set while a stop silences it
 READ_ALOUD_STARTED = f"{DOMAIN}_read_aloud_started"   # hass.data: message id -> done when it starts playing
@@ -189,50 +206,127 @@ def _follow_speaker(hass: HomeAssistant, options: Any) -> str | None:
     return next((s for s in options.get(CONF_READ_ALOUD_ROOM_SPEAKERS) or [] if _area_of(hass, s) == area), None)
 
 
-async def _prepare(hass: HomeAssistant, voice: str, message: str) -> tuple[str, float]:
-    """Make a message's speech ahead of time (kept in the TTS cache, so playing it starts at once) and
-    measure how long it plays: (media source id, seconds). The speaker's own playing/idle state can't be
-    trusted for this (the Satellite1 says idle in mid-sentence and playing after it ended)."""
-    import io  # noqa: PLC0415
+@dataclass
+class _Speech:
+    """A message's speech, made ahead: plain 16-bit PCM, so speech made for the messages behind it can be
+    joined on to it and played as one clip (no start-up gap on the speaker between them)."""
 
-    import mutagen  # noqa: PLC0415  # Home Assistant's TTS uses it; only needed here
+    pcm: bytes
+    rate: int
+    width: int
+    channels: int
 
+    @property
+    def seconds(self) -> float:
+        return len(self.pcm) / (self.rate * self.width * self.channels)
+
+    def joins(self, other: _Speech) -> bool:
+        return (self.rate, self.width, self.channels) == (other.rate, other.width, other.channels)
+
+
+async def _prepare(hass: HomeAssistant, voice: str, message: str) -> _Speech:
+    """Make a message's speech ahead of time, as WAV in one fixed format, and measure it. The speaker's own
+    playing/idle state can't be trusted for timing (the Satellite1 says idle in mid-sentence and playing
+    after it ended), and its length must be known to join speech and move the reader's highlight."""
     from homeassistant.components.tts import async_get_media_source_audio  # noqa: PLC0415
     from homeassistant.components.tts.media_source import generate_media_source_id  # noqa: PLC0415
 
-    media = generate_media_source_id(hass, message, engine=voice, cache=True)
+    media = generate_media_source_id(hass, message, engine=voice, cache=True, options=READ_ALOUD_FORMAT)
     _ext, data = await async_get_media_source_audio(hass, media)
-    audio = mutagen.File(io.BytesIO(data))
-    seconds = float(audio.info.length) if audio is not None and audio.info else len(message) / READ_ALOUD_PACE
-    return media, seconds
+    with wave.open(io.BytesIO(data)) as wav:
+        return _Speech(wav.readframes(wav.getnframes()), wav.getframerate(), wav.getsampwidth(), wav.getnchannels())
 
 
-async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: asyncio.Queue) -> None:
-    """Speak what is queued for one speaker, each reply after the one before has finished."""
+async def _prepare_after(hass: HomeAssistant, before: asyncio.Task | None, voice: str, message: str) -> _Speech:
+    """Speech is made one message at a time, in order: the voice gives the message that plays next all its
+    speed instead of sharing it with the ones behind (a stop that cancels the one before doesn't stop this)."""
+    if before is not None:
+        await asyncio.wait([before])
+    return await _prepare(hass, voice, message)
+
+
+def _clip(hass: HomeAssistant, speech: list[_Speech]) -> str:
+    """Join speech into one WAV clip served by Home Assistant itself; the URL the speaker fetches it from."""
+    out = io.BytesIO()
+    with wave.open(out, "wb") as wav:
+        wav.setnchannels(speech[0].channels)
+        wav.setsampwidth(speech[0].width)
+        wav.setframerate(speech[0].rate)
+        wav.writeframes(b"".join(s.pcm for s in speech))
+    clips: dict[str, bytes] = hass.data.setdefault(READ_ALOUD_CLIPS, {})
+    token = secrets.token_urlsafe(16)
+    clips[token] = out.getvalue()
+    while len(clips) > READ_ALOUD_CLIPS_KEPT:
+        clips.pop(next(iter(clips)))
+    return f"{READ_ALOUD_CLIP_URL}/{token}.wav"
+
+
+class ReadAloudClipView(HomeAssistantView):
+    """Read aloud's clips, for the speaker to fetch (like TTS's own proxy: an unguessable name, no login)."""
+
+    url = READ_ALOUD_CLIP_URL + "/{token}.wav"
+    name = "api:hisho:read_aloud"
+    requires_auth = False
+
+    async def get(self, request: web.Request, token: str) -> web.Response:
+        data = request.app[KEY_HASS].data.get(READ_ALOUD_CLIPS, {}).get(token)
+        if data is None:
+            return web.Response(status=HTTPStatus.NOT_FOUND)
+        return web.Response(body=data, content_type="audio/wav")
+
+
+class _Waiting(asyncio.Queue):
+    """A speaker's queue that can look at the message behind the one being played."""
+
+    def peek(self) -> tuple:
+        return self._queue[0]
+
+
+async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: _Waiting) -> None:
+    """Speak what is queued for one speaker, each message after the one before has finished. Messages whose
+    speech is already made when one starts are joined on to it and played as one clip."""
     loop = asyncio.get_running_loop()
     cut: asyncio.Event = hass.data.setdefault(READ_ALOUD_CUT, {}).setdefault(speaker, asyncio.Event())
     while True:
-        voice, message, context, spoken, begins, ready = await queue.get()
+        batch = [await queue.get()]
+        voice, message, context, spoken, begins, ready = batch[0]
         cut.clear()
         try:
             try:
-                media, seconds = await ready
+                speech = [await ready]
             except Exception:  # noqa: BLE001  # no measured speech: tts.speak, timed by the speaker's state
                 _LOGGER.debug("read aloud: could not make %r ahead", message, exc_info=True)
             else:
+                while not queue.empty() and sum(s.seconds for s in speech) < READ_ALOUD_CLIP_MAX:
+                    behind = queue.peek()[-1]
+                    if not behind.done() or behind.cancelled() or behind.exception() is not None \
+                            or not speech[0].joins(behind.result()):
+                        break
+                    batch.append(queue.get_nowait())
+                    speech.append(behind.result())
                 await hass.services.async_call(
                     "media_player", "play_media",
-                    {"entity_id": speaker, "media_content_id": media, "media_content_type": "music", "announce": True},
+                    {"entity_id": speaker, "media_content_id": _clip(hass, speech), "media_content_type": "music",
+                     "announce": True},
                     blocking=True, context=context,
                 )
                 try:   # the speaker starts sounding a moment after play_media; a stop cuts the wait short
                     await asyncio.wait_for(cut.wait(), READ_ALOUD_LEAD)
                 except TimeoutError:
                     pass
-                if not begins.done():
-                    begins.set_result(None)
-                try:   # as long as the speech lasts, unless a stop cuts it
-                    await asyncio.wait_for(cut.wait(), seconds + READ_ALOUD_TAIL)
+                for (*_, spoken_, begins_, _ready), each in zip(batch, speech, strict=True):
+                    if not begins_.done():
+                        begins_.set_result(None)
+                    try:   # as long as its speech lasts, unless a stop cuts it
+                        await asyncio.wait_for(cut.wait(), each.seconds)
+                    except TimeoutError:
+                        pass
+                    if each is not speech[-1] and not spoken_.done():
+                        spoken_.set_result(None)
+                    if cut.is_set():
+                        break
+                try:
+                    await asyncio.wait_for(cut.wait(), READ_ALOUD_TAIL)
                 except TimeoutError:
                     pass
                 continue
@@ -253,17 +347,20 @@ async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: asyncio.Q
                 elif started or loop.time() > begun + READ_ALOUD_START:
                     break
                 await asyncio.sleep(READ_ALOUD_POLL)
-        except Exception:  # one reply that can't be spoken must not stop the ones after it
+        except Exception:  # one message that can't be spoken must not stop the ones after it
             _LOGGER.exception("read aloud on %s failed", speaker)
         finally:
-            for each in (begins, spoken):
-                if not each.done():
-                    each.set_result(None)
-            queue.task_done()
+            for *_, spoken_, begins_, _ready in batch:
+                for each in (begins_, spoken_):
+                    if not each.done():
+                        each.set_result(None)
+                queue.task_done()
 
 
 def async_setup_services(hass: HomeAssistant) -> None:
     """Register the services."""
+    if getattr(hass, "http", None) is not None:
+        hass.http.register_view(ReadAloudClipView)
 
     async def run_action(call: ServiceCall) -> ServiceResponse:
         coordinator = _coordinator(hass, call)
@@ -393,7 +490,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="read_aloud_no_message")
         queue = queues.get(speaker)
         if queue is None:
-            queue = queues[speaker] = asyncio.Queue()
+            queue = queues[speaker] = _Waiting()
             hass.async_create_background_task(_read_aloud_worker(hass, speaker, queue), f"hisho read aloud {speaker}")
         spoken: asyncio.Future = hass.loop.create_future()
         begins = hass.loop.create_future()
@@ -402,8 +499,11 @@ def async_setup_services(hass: HomeAssistant) -> None:
             for kept in (starts, done_by_id):
                 while len(kept) > 200:   # only the latest messages are asked about
                     kept.pop(next(iter(kept)))
-        # the speech is made now, while what is ahead of it plays: no gap for making it later
-        ready = hass.async_create_task(_prepare(hass, voice, message), "hisho read aloud prepare")
+        # the speech is made now, while what is ahead of it plays (after the speech queued before it): no gap
+        # for making it later
+        making: dict[str, asyncio.Task] = hass.data.setdefault(READ_ALOUD_MAKING, {})
+        ready = making[speaker] = hass.async_create_task(
+            _prepare_after(hass, making.get(speaker), voice, message), "hisho read aloud prepare")
         queue.put_nowait((voice, message, call.context, spoken, begins, ready))
         waiting = queue.qsize()
         if call.data["wait"]:
