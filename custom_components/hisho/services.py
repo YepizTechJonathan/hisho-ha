@@ -41,7 +41,7 @@ _LOGGER = logging.getLogger(__name__)
 # reply waits until the speaker stops (or the longest the reply could take, if the speaker never says).
 READ_ALOUD_START = 10.0  # s a speaker may take to start playing
 READ_ALOUD_PACE = 10.0   # characters spoken per second, at the slowest
-READ_ALOUD_POLL = 0.5    # s between looks at the speaker
+READ_ALOUD_POLL = 0.1    # s between looks at the speaker (the next sentence starts this soon after)
 READ_ALOUD_QUEUES = f"{DOMAIN}_read_aloud"   # hass.data: speaker -> its queue
 READ_ALOUD_LAST = f"{DOMAIN}_read_aloud_last"   # hass.data: speaker -> the last reply sent to it, for repeat
 READ_ALOUD_CUT = f"{DOMAIN}_read_aloud_cut"     # hass.data: speaker -> set while a stop silences it
