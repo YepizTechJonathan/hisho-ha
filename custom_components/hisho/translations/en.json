@@ -658,6 +658,14 @@
         "stop": {
           "name": "Stop",
           "description": "Silence the speaker now and drop the messages waiting for it."
+        },
+        "id": {
+          "name": "Id",
+          "description": "A name for this message, to ask when it starts playing."
+        },
+        "await_start": {
+          "name": "Wait for start",
+          "description": "Answer once the message with this id starts playing (or is over)."
         }
       }
     }

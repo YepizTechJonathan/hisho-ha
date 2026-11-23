@@ -748,6 +748,23 @@ async def test_read_aloud_speaks_on_the_chosen_speaker_only_when_turned_on(
     assert spoken[-1] == {**spoken[-1], "media_player_entity_id": "media_player.den", "message": "Hi."}  # the last reply anywhere
     hass.states.async_set("media_player.den", "idle")
 
+    # await_start answers once that message starts playing
+    hass.states.async_set("media_player.office", "idle")
+    await hass.services.async_call("hisho", "read_aloud", {"message": "Before."}, blocking=True)
+    await hass.services.async_call("hisho", "read_aloud", {"message": "Hello.", "id": "s1"}, blocking=True)
+    started = hass.async_create_task(hass.services.async_call(
+        "hisho", "read_aloud", {"await_start": "s1"}, blocking=True, return_response=True))
+    for _ in range(20):                                               # until "Before." is the one playing
+        if spoken[-1]["message"] == "Before.":
+            break
+        hass.states.async_set("media_player.office", "idle")
+        await asyncio.sleep(0.03)
+    assert spoken[-1]["message"] == "Before." and not started.done()  # Hello. hasn't started yet
+    hass.states.async_set("media_player.office", "idle")
+    await asyncio.sleep(0.1)
+    assert started.done() and spoken[-1]["message"] == "Hello."
+    hass.states.async_set("media_player.office", "idle")
+    await asyncio.sleep(0.05)
     # wait answers once spoken; stop drops what waits and silences the speaker
     stopped: list[str] = []
 

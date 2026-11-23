@@ -25,6 +25,12 @@ read_aloud:
       default: false
       selector:
         boolean:
+    id:
+      selector:
+        text:
+    await_start:
+      selector:
+        text:
 run_action:
   fields:
     config_entry_id:
