@@ -822,6 +822,7 @@ async def test_read_aloud_times_each_message_by_its_measured_speech(
     """Speech made ahead is played with play_media and lasts its measured length, whatever the speaker reports."""
     await setup_entry(hass, config_entry)
     monkeypatch.setattr(services, "READ_ALOUD_TAIL", 0.0)
+    monkeypatch.setattr(services, "READ_ALOUD_LEAD", 0.0)
     made: list[str] = []
 
     async def prepare(hass_: HomeAssistant, voice: str, message: str) -> tuple[str, float]:

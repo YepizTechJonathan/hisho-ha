@@ -42,7 +42,8 @@ _LOGGER = logging.getLogger(__name__)
 READ_ALOUD_START = 10.0  # s a speaker may take to start playing
 READ_ALOUD_PACE = 10.0   # characters spoken per second, at the slowest
 READ_ALOUD_POLL = 0.1    # s between looks at the speaker (the next sentence starts this soon after)
-READ_ALOUD_TAIL = 0.15   # s after a sentence's measured end before the next starts (the speaker's own start-up)
+READ_ALOUD_LEAD = 0.6    # s a speaker takes from play_media to sound (it fetches and buffers first)
+READ_ALOUD_TAIL = 0.2    # s of quiet after a sentence's measured end before the next is sent
 READ_ALOUD_QUEUES = f"{DOMAIN}_read_aloud"   # hass.data: speaker -> its queue
 READ_ALOUD_LAST = f"{DOMAIN}_read_aloud_last"   # hass.data: speaker -> the last reply sent to it, for repeat
 READ_ALOUD_CUT = f"{DOMAIN}_read_aloud_cut"     # hass.data: speaker -> set while a stop silences it
@@ -223,6 +224,10 @@ async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: asyncio.Q
                     {"entity_id": speaker, "media_content_id": media, "media_content_type": "music", "announce": True},
                     blocking=True, context=context,
                 )
+                try:   # the speaker starts sounding a moment after play_media; a stop cuts the wait short
+                    await asyncio.wait_for(cut.wait(), READ_ALOUD_LEAD)
+                except TimeoutError:
+                    pass
                 if not begins.done():
                     begins.set_result(None)
                 try:   # as long as the speech lasts, unless a stop cuts it
