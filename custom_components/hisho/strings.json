@@ -430,6 +430,12 @@
     },
     "read_aloud_no_speaker": {
       "message": "No read aloud speaker is set. Pick one in the Hisho integration's options."
+    },
+    "read_aloud_nothing_to_repeat": {
+      "message": "Nothing has been read aloud on that speaker yet."
+    },
+    "read_aloud_no_message": {
+      "message": "Give a message to read, or turn on repeat."
     }
   },
   "services": {
@@ -635,11 +641,23 @@
         },
         "message": {
           "name": "Message",
-          "description": "The text to speak."
+          "description": "The text to speak (leave out with repeat)."
         },
         "speaker": {
           "name": "Speaker",
           "description": "Play on this media player instead of the one in the options."
+        },
+        "repeat": {
+          "name": "Repeat",
+          "description": "Read the last reply sent to the speaker again."
+        },
+        "wait": {
+          "name": "Wait",
+          "description": "Answer only once the message has been spoken (for a reader that pauses between sentences)."
+        },
+        "stop": {
+          "name": "Stop",
+          "description": "Silence the speaker now and drop the messages waiting for it."
         }
       }
     }

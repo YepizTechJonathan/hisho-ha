@@ -5,7 +5,6 @@ read_aloud:
         config_entry:
           integration: hisho
     message:
-      required: true
       example: The build passed and the release is out.
       selector:
         text:
@@ -14,6 +13,18 @@ read_aloud:
       selector:
         entity:
           domain: media_player
+    repeat:
+      default: false
+      selector:
+        boolean:
+    wait:
+      default: false
+      selector:
+        boolean:
+    stop:
+      default: false
+      selector:
+        boolean:
 run_action:
   fields:
     config_entry_id:

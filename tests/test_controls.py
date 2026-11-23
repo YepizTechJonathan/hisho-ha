@@ -738,3 +738,29 @@ async def test_read_aloud_speaks_on_the_chosen_speaker_only_when_turned_on(
     hass.states.async_set("media_player.office", "idle")
     await asyncio.sleep(0.05)
     assert [s["message"] for s in spoken] == ["The build passed.", "Hi.", "Next reply."]
+    hass.states.async_set("media_player.office", "idle")
+    await hass.services.async_call("hisho", "read_aloud", {"repeat": True}, blocking=True)
+    await asyncio.sleep(0.05)
+    assert spoken[-1]["message"] == "Next reply."   # repeat plays the office's last reply again
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call("hisho", "read_aloud", {"repeat": True, "speaker": "media_player.den"},
+                                       blocking=True)
+
+    # wait answers once spoken; stop drops what waits and silences the speaker
+    stopped: list[str] = []
+
+    async def media_stop(call: Any) -> None:
+        stopped.append(call.data["entity_id"])
+        hass.states.async_set(call.data["entity_id"], "idle")
+
+    hass.services.async_register("media_player", "media_stop", media_stop)
+    hass.states.async_set("media_player.office", "idle")
+    waited = hass.async_create_task(hass.services.async_call(
+        "hisho", "read_aloud", {"message": "One.", "wait": True}, blocking=True, return_response=True))
+    await asyncio.sleep(0.05)
+    assert spoken[-1]["message"] == "One." and not waited.done()   # still playing
+    await hass.services.async_call("hisho", "read_aloud", {"message": "Two."}, blocking=True)
+    await hass.services.async_call("hisho", "read_aloud", {"stop": True}, blocking=True)
+    await asyncio.sleep(0.05)
+    assert waited.done() and stopped == ["media_player.office"]
+    assert spoken[-1]["message"] == "One."                          # "Two." was dropped
