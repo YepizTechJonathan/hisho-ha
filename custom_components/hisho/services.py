@@ -42,6 +42,7 @@ _LOGGER = logging.getLogger(__name__)
 READ_ALOUD_START = 10.0  # s a speaker may take to start playing
 READ_ALOUD_PACE = 10.0   # characters spoken per second, at the slowest
 READ_ALOUD_POLL = 0.1    # s between looks at the speaker (the next sentence starts this soon after)
+READ_ALOUD_TAIL = 0.15   # s after a sentence's measured end before the next starts (the speaker's own start-up)
 READ_ALOUD_QUEUES = f"{DOMAIN}_read_aloud"   # hass.data: speaker -> its queue
 READ_ALOUD_LAST = f"{DOMAIN}_read_aloud_last"   # hass.data: speaker -> the last reply sent to it, for repeat
 READ_ALOUD_CUT = f"{DOMAIN}_read_aloud_cut"     # hass.data: speaker -> set while a stop silences it
@@ -186,14 +187,49 @@ def _follow_speaker(hass: HomeAssistant, options: Any) -> str | None:
     return next((s for s in options.get(CONF_READ_ALOUD_ROOM_SPEAKERS) or [] if _area_of(hass, s) == area), None)
 
 
+async def _prepare(hass: HomeAssistant, voice: str, message: str) -> tuple[str, float]:
+    """Make a message's speech ahead of time (kept in the TTS cache, so playing it starts at once) and
+    measure how long it plays: (media source id, seconds). The speaker's own playing/idle state can't be
+    trusted for this (the Satellite1 says idle in mid-sentence and playing after it ended)."""
+    import io  # noqa: PLC0415
+
+    import mutagen  # noqa: PLC0415  # Home Assistant's TTS uses it; only needed here
+
+    from homeassistant.components.tts import async_get_media_source_audio  # noqa: PLC0415
+    from homeassistant.components.tts.media_source import generate_media_source_id  # noqa: PLC0415
+
+    media = generate_media_source_id(hass, message, engine=voice, cache=True)
+    _ext, data = await async_get_media_source_audio(hass, media)
+    audio = mutagen.File(io.BytesIO(data))
+    seconds = float(audio.info.length) if audio is not None and audio.info else len(message) / READ_ALOUD_PACE
+    return media, seconds
+
+
 async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: asyncio.Queue) -> None:
     """Speak what is queued for one speaker, each reply after the one before has finished."""
     loop = asyncio.get_running_loop()
     cut: asyncio.Event = hass.data.setdefault(READ_ALOUD_CUT, {}).setdefault(speaker, asyncio.Event())
     while True:
-        voice, message, context, spoken, begins = await queue.get()
+        voice, message, context, spoken, begins, ready = await queue.get()
         cut.clear()
         try:
+            try:
+                media, seconds = await ready
+            except Exception:  # noqa: BLE001  # no measured speech: tts.speak, timed by the speaker's state
+                _LOGGER.debug("read aloud: could not make %r ahead", message, exc_info=True)
+            else:
+                await hass.services.async_call(
+                    "media_player", "play_media",
+                    {"entity_id": speaker, "media_content_id": media, "media_content_type": "music", "announce": True},
+                    blocking=True, context=context,
+                )
+                if not begins.done():
+                    begins.set_result(None)
+                try:   # as long as the speech lasts, unless a stop cuts it
+                    await asyncio.wait_for(cut.wait(), seconds + READ_ALOUD_TAIL)
+                except TimeoutError:
+                    pass
+                continue
             await hass.services.async_call(
                 "tts", "speak",
                 {"entity_id": voice, "media_player_entity_id": speaker, "message": message, "cache": False},
@@ -316,7 +352,8 @@ def async_setup_services(hass: HomeAssistant) -> None:
             for each in playing:
                 waiting = queues.get(each)
                 while waiting is not None and not waiting.empty():
-                    *_, spoken_, begins_ = waiting.get_nowait()
+                    *_, spoken_, begins_, ready_ = waiting.get_nowait()
+                    ready_.cancel()
                     for each in (begins_, spoken_):
                         if not each.done():
                             each.set_result(None)
@@ -352,7 +389,9 @@ def async_setup_services(hass: HomeAssistant) -> None:
             starts[ident] = begins
             while len(starts) > 50:   # only the latest messages are asked about
                 starts.pop(next(iter(starts)))
-        queue.put_nowait((voice, message, call.context, spoken, begins))
+        # the speech is made now, while what is ahead of it plays: no gap for making it later
+        ready = hass.async_create_task(_prepare(hass, voice, message), "hisho read aloud prepare")
+        queue.put_nowait((voice, message, call.context, spoken, begins, ready))
         waiting = queue.qsize()
         if call.data["wait"]:
             await spoken

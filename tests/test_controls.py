@@ -814,3 +814,35 @@ async def test_read_aloud_follows_the_owner_from_room_to_room(
     await hass.services.async_call("hisho", "read_aloud", {"message": "Out in the garage."}, blocking=True)
     await asyncio.sleep(0.05)
     assert spoken == ["media_player.kitchen_mini", "media_player.office"]
+
+
+async def test_read_aloud_times_each_message_by_its_measured_speech(
+    hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Speech made ahead is played with play_media and lasts its measured length, whatever the speaker reports."""
+    await setup_entry(hass, config_entry)
+    monkeypatch.setattr(services, "READ_ALOUD_TAIL", 0.0)
+    made: list[str] = []
+
+    async def prepare(hass_: HomeAssistant, voice: str, message: str) -> tuple[str, float]:
+        made.append(message)
+        return f"media-source://tts/{message}", 0.15
+
+    monkeypatch.setattr(services, "_prepare", prepare)
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    await hass.config_entries.options.async_configure(
+        result["flow_id"], {"show_network": False, "read_aloud": True, "read_aloud_speaker": "media_player.office"})
+    await hass.async_block_till_done()
+    played: list[str] = []
+
+    async def play_media(call: Any) -> None:
+        played.append(call.data["media_content_id"])
+        hass.states.async_set("media_player.office", "idle")   # what the Satellite1 says mid-sentence
+
+    hass.services.async_register("media_player", "play_media", play_media)
+    await hass.services.async_call("hisho", "read_aloud", {"message": "One."}, blocking=True)
+    await hass.services.async_call("hisho", "read_aloud", {"message": "Two."}, blocking=True)
+    await asyncio.sleep(0.05)
+    assert made == ["One.", "Two."] and played == ["media-source://tts/One."]   # Two. made, waiting its turn
+    await asyncio.sleep(0.2)
+    assert played == ["media-source://tts/One.", "media-source://tts/Two."]
