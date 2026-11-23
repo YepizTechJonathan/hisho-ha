@@ -742,16 +742,19 @@ async def test_read_aloud_speaks_on_the_chosen_speaker_only_when_turned_on(
     await hass.services.async_call("hisho", "read_aloud", {"repeat": True}, blocking=True)
     await asyncio.sleep(0.05)
     assert spoken[-1]["message"] == "Next reply."   # repeat plays the office's last reply again
-    with pytest.raises(ServiceValidationError):
-        await hass.services.async_call("hisho", "read_aloud", {"repeat": True, "speaker": "media_player.den"},
-                                       blocking=True)
+    await hass.services.async_call("hisho", "read_aloud", {"repeat": True, "speaker": "media_player.den"},
+                                   blocking=True)
+    await asyncio.sleep(0.05)
+    assert spoken[-1] == {**spoken[-1], "media_player_entity_id": "media_player.den", "message": "Hi."}  # the last reply anywhere
+    hass.states.async_set("media_player.den", "idle")
 
     # wait answers once spoken; stop drops what waits and silences the speaker
     stopped: list[str] = []
 
     async def media_stop(call: Any) -> None:
-        stopped.append(call.data["entity_id"])
-        hass.states.async_set(call.data["entity_id"], "idle")
+        for each in call.data["entity_id"]:
+            stopped.append(each)
+            hass.states.async_set(each, "idle")
 
     hass.services.async_register("media_player", "media_stop", media_stop)
     hass.states.async_set("media_player.office", "idle")
@@ -762,5 +765,35 @@ async def test_read_aloud_speaks_on_the_chosen_speaker_only_when_turned_on(
     await hass.services.async_call("hisho", "read_aloud", {"message": "Two."}, blocking=True)
     await hass.services.async_call("hisho", "read_aloud", {"stop": True}, blocking=True)
     await asyncio.sleep(0.05)
-    assert waited.done() and stopped == ["media_player.office"]
+    assert waited.done() and "media_player.office" in stopped    # every speaker read aloud used is silenced
     assert spoken[-1]["message"] == "One."                          # "Two." was dropped
+
+
+async def test_read_aloud_follows_the_owner_from_room_to_room(
+    hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Follow me: each message plays on the room speaker where the follow sensor says the owner is."""
+    from homeassistant.helpers import area_registry as ar
+    await setup_entry(hass, config_entry)
+    monkeypatch.setattr(services, "READ_ALOUD_POLL", 0.01)
+    kitchen = ar.async_get(hass).async_create("Kitchen")
+    entities = er.async_get(hass)
+    entities.async_get_or_create("media_player", "test", "kitchen-mini", suggested_object_id="kitchen_mini")
+    entities.async_update_entity("media_player.kitchen_mini", area_id=kitchen.id)
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    await hass.config_entries.options.async_configure(result["flow_id"], {
+        "show_network": False, "read_aloud": True, "read_aloud_speaker": "media_player.office",
+        "read_aloud_follow": "sensor.phone_area", "read_aloud_room_speakers": ["media_player.kitchen_mini"]})
+    await hass.async_block_till_done()
+    spoken: list[str] = []
+
+    async def speak(call: Any) -> None:
+        spoken.append(call.data["media_player_entity_id"])
+
+    hass.services.async_register("tts", "speak", speak)
+    hass.states.async_set("sensor.phone_area", "Kitchen")
+    await hass.services.async_call("hisho", "read_aloud", {"message": "In the kitchen."}, blocking=True)
+    hass.states.async_set("sensor.phone_area", "Garage")          # no room speaker there: the office one
+    await hass.services.async_call("hisho", "read_aloud", {"message": "Out in the garage."}, blocking=True)
+    await asyncio.sleep(0.05)
+    assert spoken == ["media_player.kitchen_mini", "media_player.office"]

@@ -706,13 +706,17 @@
           "show_network": "Show network devices",
           "read_aloud": "Read aloud on a speaker",
           "read_aloud_speaker": "Read aloud speaker",
-          "read_aloud_voice": "Read aloud voice"
+          "read_aloud_voice": "Read aloud voice",
+          "read_aloud_follow": "Follow me: where you are",
+          "read_aloud_room_speakers": "Follow me: room speakers"
         },
         "data_description": {
           "show_network": "Switches, access points and cameras Hisho's add-ons see (UniFi...). Off by default: Home Assistant's own integrations usually show them already.",
           "read_aloud": "Hisho's replies are spoken on the speaker below (the hisho.read_aloud action). Off by default: replies then play on the device you are using.",
           "read_aloud_speaker": "The media player that reads replies, such as a Google speaker, a TV, or a Dante speaker.",
-          "read_aloud_voice": "The text-to-speech voice. Hisho's own voice (tts.hisho_voice) is the one read aloud uses on the desktop."
+          "read_aloud_voice": "The text-to-speech voice. Hisho's own voice (tts.hisho_voice) is the one read aloud uses on the desktop.",
+          "read_aloud_follow": "A sensor that says which room you are in, such as Bermuda's Area sensor for your phone. Replies then play in that room, and move with you between sentences.",
+          "read_aloud_room_speakers": "The speakers that may read in their room (each must be in an area). In a room with none of them, the read aloud speaker above is used."
         }
       }
     },

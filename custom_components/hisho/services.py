@@ -20,7 +20,17 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service import async_register_admin_service
 
 from .api import HishoError
-from .const import CONF_READ_ALOUD, CONF_READ_ALOUD_SPEAKER, CONF_READ_ALOUD_VOICE, DEFAULT_READ_ALOUD_VOICE, DOMAIN
+from homeassistant.helpers import area_registry as ar, device_registry as dr, entity_registry as er
+
+from .const import (
+    CONF_READ_ALOUD,
+    CONF_READ_ALOUD_FOLLOW,
+    CONF_READ_ALOUD_ROOM_SPEAKERS,
+    CONF_READ_ALOUD_SPEAKER,
+    CONF_READ_ALOUD_VOICE,
+    DEFAULT_READ_ALOUD_VOICE,
+    DOMAIN,
+)
 from .coordinator import HishoCoordinator
 
 ATTR_ENTRY = "config_entry_id"
@@ -145,6 +155,32 @@ def _response(result: Any) -> ServiceResponse:
 
 
 @callback
+def _area_of(hass: HomeAssistant, entity_id: str) -> str | None:
+    """The area an entity is in: its own, else its device's."""
+    entry = er.async_get(hass).async_get(entity_id)
+    if entry is None:
+        return None
+    if entry.area_id:
+        return entry.area_id
+    device = dr.async_get(hass).async_get(entry.device_id) if entry.device_id else None
+    return device.area_id if device else None
+
+
+def _follow_speaker(hass: HomeAssistant, options: Any) -> str | None:
+    """Follow me: the room speaker in the area the follow sensor says the owner is in, or None."""
+    follow = options.get(CONF_READ_ALOUD_FOLLOW)
+    state = hass.states.get(follow) if follow else None
+    if state is None:
+        return None
+    area = state.attributes.get("area_id")
+    if not area:   # a sensor that says the room by name
+        found = ar.async_get(hass).async_get_area_by_name(str(state.state))
+        area = found.id if found else None
+    if not area:
+        return None
+    return next((s for s in options.get(CONF_READ_ALOUD_ROOM_SPEAKERS) or [] if _area_of(hass, s) == area), None)
+
+
 async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: asyncio.Queue) -> None:
     """Speak what is queued for one speaker, each reply after the one before has finished."""
     loop = asyncio.get_running_loop()
@@ -260,28 +296,32 @@ def async_setup_services(hass: HomeAssistant) -> None:
         options = _coordinator(hass, call).config_entry.options
         if not options.get(CONF_READ_ALOUD):
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="read_aloud_off")
-        speaker = call.data.get("speaker") or options.get(CONF_READ_ALOUD_SPEAKER)
+        default = options.get(CONF_READ_ALOUD_SPEAKER)
+        speaker = call.data.get("speaker") or _follow_speaker(hass, options) or default
         if not speaker:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="read_aloud_no_speaker")
         voice = options.get(CONF_READ_ALOUD_VOICE) or DEFAULT_READ_ALOUD_VOICE
         queues: dict[str, asyncio.Queue] = hass.data.setdefault(READ_ALOUD_QUEUES, {})
-        if call.data["stop"]:
-            waiting = queues.get(speaker)
-            while waiting is not None and not waiting.empty():
-                *_, dropped = waiting.get_nowait()
-                dropped.set_result(None)
-                waiting.task_done()
-            hass.data.setdefault(READ_ALOUD_CUT, {}).setdefault(speaker, asyncio.Event()).set()
-            await hass.services.async_call("media_player", "media_stop", {"entity_id": speaker},
+        if call.data["stop"]:   # every speaker read aloud may be using (follow me moves it between rooms)
+            playing = [speaker] if call.data.get("speaker") else sorted(
+                {speaker, *([default] if default else []), *queues, *(options.get(CONF_READ_ALOUD_ROOM_SPEAKERS) or [])})
+            for each in playing:
+                waiting = queues.get(each)
+                while waiting is not None and not waiting.empty():
+                    *_, dropped = waiting.get_nowait()
+                    dropped.set_result(None)
+                    waiting.task_done()
+                hass.data.setdefault(READ_ALOUD_CUT, {}).setdefault(each, asyncio.Event()).set()
+            await hass.services.async_call("media_player", "media_stop", {"entity_id": playing},
                                            blocking=True, context=call.context)
             return {"speaker": speaker, "stopped": True}
         last: dict[str, str] = hass.data.setdefault(READ_ALOUD_LAST, {})
         if call.data["repeat"]:
-            message = last.get(speaker)
+            message = last.get(speaker) or last.get("")   # follow me: the last reply, wherever it played
             if not message:
                 raise ServiceValidationError(translation_domain=DOMAIN, translation_key="read_aloud_nothing_to_repeat")
         elif message := call.data.get("message"):
-            last[speaker] = message
+            last[speaker] = last[""] = message
         else:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="read_aloud_no_message")
         queue = queues.get(speaker)

@@ -51,6 +51,8 @@ from .api import (
 )
 from .const import (
     CONF_READ_ALOUD,
+    CONF_READ_ALOUD_FOLLOW,
+    CONF_READ_ALOUD_ROOM_SPEAKERS,
     CONF_READ_ALOUD_SPEAKER,
     CONF_READ_ALOUD_VOICE,
     CONF_SHOW_NETWORK,
@@ -310,6 +312,7 @@ class HishoOptionsFlow(OptionsFlowWithReload):
             else:
                 return self.async_create_entry(data=user_input)
         speaker = options.get(CONF_READ_ALOUD_SPEAKER)
+        follow = options.get(CONF_READ_ALOUD_FOLLOW)
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -322,6 +325,12 @@ class HishoOptionsFlow(OptionsFlowWithReload):
                     vol.Required(
                         CONF_READ_ALOUD_VOICE, default=options.get(CONF_READ_ALOUD_VOICE, DEFAULT_READ_ALOUD_VOICE)
                     ): EntitySelector(EntitySelectorConfig(domain="tts")),
+                    vol.Optional(
+                        CONF_READ_ALOUD_FOLLOW, **({"default": follow} if follow else {})
+                    ): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                    vol.Optional(
+                        CONF_READ_ALOUD_ROOM_SPEAKERS, default=options.get(CONF_READ_ALOUD_ROOM_SPEAKERS, [])
+                    ): EntitySelector(EntitySelectorConfig(domain="media_player", multiple=True)),
                 }
             ),
             errors=errors,

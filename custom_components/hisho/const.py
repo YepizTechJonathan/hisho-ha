@@ -14,6 +14,10 @@ CONF_READ_ALOUD: Final = "read_aloud"
 CONF_READ_ALOUD_SPEAKER: Final = "read_aloud_speaker"
 CONF_READ_ALOUD_VOICE: Final = "read_aloud_voice"
 DEFAULT_READ_ALOUD_VOICE: Final = "tts.hisho_voice"
+# Follow me: a sensor whose state (or area_id attribute) is the room the owner is in (Bermuda's Area sensor),
+# and the speakers that may read there; a room without one of them uses the read aloud speaker.
+CONF_READ_ALOUD_FOLLOW: Final = "read_aloud_follow"
+CONF_READ_ALOUD_ROOM_SPEAKERS: Final = "read_aloud_room_speakers"
 
 SNAPSHOT_PATH: Final = "/api/ha/snapshot"
 PAIR_PATH: Final = "/api/ha/pair"
