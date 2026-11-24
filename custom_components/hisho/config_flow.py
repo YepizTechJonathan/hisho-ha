@@ -320,8 +320,9 @@ class HishoOptionsFlow(OptionsFlowWithReload):
                     vol.Required(CONF_SHOW_NETWORK, default=options.get(CONF_SHOW_NETWORK, False)): bool,
                     vol.Required(CONF_READ_ALOUD, default=options.get(CONF_READ_ALOUD, False)): bool,
                     vol.Optional(
-                        CONF_READ_ALOUD_SPEAKER, **({"default": speaker} if speaker else {})
-                    ): EntitySelector(EntitySelectorConfig(domain="media_player")),
+                        CONF_READ_ALOUD_SPEAKER, **({"default": [speaker] if isinstance(speaker, str) else speaker}
+                                                    if speaker else {})
+                    ): EntitySelector(EntitySelectorConfig(domain="media_player", multiple=True)),
                     vol.Required(
                         CONF_READ_ALOUD_VOICE, default=options.get(CONF_READ_ALOUD_VOICE, DEFAULT_READ_ALOUD_VOICE)
                     ): EntitySelector(EntitySelectorConfig(domain="tts")),

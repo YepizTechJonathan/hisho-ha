@@ -721,7 +721,7 @@ async def test_read_aloud_speaks_on_the_chosen_speaker_only_when_turned_on(
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"show_network": False, "read_aloud": True})
     assert result["errors"] == {"read_aloud_speaker": "speaker_needed"}  # on without a speaker: asked again
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"show_network": False, "read_aloud": True, "read_aloud_speaker": "media_player.office"})
+        result["flow_id"], {"show_network": False, "read_aloud": True, "read_aloud_speaker": ["media_player.office"]})
     await hass.async_block_till_done()
 
     spoken: list[dict[str, Any]] = []
@@ -804,31 +804,103 @@ async def test_read_aloud_speaks_on_the_chosen_speaker_only_when_turned_on(
 async def test_read_aloud_follows_the_owner_from_room_to_room(
     hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Follow me: each message plays on the room speaker where the follow sensor says the owner is."""
+    """Follow me: each message plays on the room speakers where the follow sensor says the owner is."""
     from homeassistant.helpers import area_registry as ar
     await setup_entry(hass, config_entry)
     monkeypatch.setattr(services, "READ_ALOUD_POLL", 0.01)
+    monkeypatch.setattr(services, "READ_ALOUD_START", 0.02)   # a speaker that never says playing: next one soon
     kitchen = ar.async_get(hass).async_create("Kitchen")
     entities = er.async_get(hass)
     entities.async_get_or_create("media_player", "test", "kitchen-mini", suggested_object_id="kitchen_mini")
     entities.async_update_entity("media_player.kitchen_mini", area_id=kitchen.id)
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
     await hass.config_entries.options.async_configure(result["flow_id"], {
-        "show_network": False, "read_aloud": True, "read_aloud_speaker": "media_player.office",
+        "show_network": False, "read_aloud": True, "read_aloud_speaker": ["media_player.office"],
         "read_aloud_follow": "sensor.phone_area", "read_aloud_room_speakers": ["media_player.kitchen_mini"]})
     await hass.async_block_till_done()
     spoken: list[str] = []
 
     async def speak(call: Any) -> None:
-        spoken.append(call.data["media_player_entity_id"])
+        target = call.data["media_player_entity_id"]
+        spoken.append(target if isinstance(target, str) else ",".join(target))
 
     hass.services.async_register("tts", "speak", speak)
     hass.states.async_set("sensor.phone_area", "Kitchen")
     await hass.services.async_call("hisho", "read_aloud", {"message": "In the kitchen."}, blocking=True)
-    hass.states.async_set("sensor.phone_area", "Garage")          # no room speaker there: the office one
+    hass.states.async_set("sensor.phone_area", "Garage")   # no room speaker there: stays in the last room
     await hass.services.async_call("hisho", "read_aloud", {"message": "Out in the garage."}, blocking=True)
     await asyncio.sleep(0.05)
-    assert spoken == ["media_player.kitchen_mini", "media_player.office"]
+    assert spoken == ["media_player.kitchen_mini", "media_player.kitchen_mini"]
+
+    # a new room counts once the sensor has said it for a while (Bluetooth rooms flicker)
+    den = ar.async_get(hass).async_create("Den")
+    entities.async_get_or_create("media_player", "test", "den-mini", suggested_object_id="den_mini")
+    entities.async_update_entity("media_player.den_mini", area_id=den.id)
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    await hass.config_entries.options.async_configure(result["flow_id"], {
+        "show_network": False, "read_aloud": True, "read_aloud_speaker": ["media_player.office"],
+        "read_aloud_follow": "sensor.phone_area",
+        "read_aloud_room_speakers": ["media_player.kitchen_mini", "media_player.den_mini"]})
+    await hass.async_block_till_done()
+    hass.states.async_set("media_player.kitchen_mini", "idle")
+    hass.states.async_set("sensor.phone_area", "Den")
+    await hass.services.async_call("hisho", "read_aloud", {"message": "Just walked past."}, blocking=True)
+    await asyncio.sleep(0.05)
+    assert spoken[-1] == "media_player.kitchen_mini"
+    monkeypatch.setattr(services, "READ_ALOUD_SETTLE", 0.0)    # ... and now it has held long enough
+    await hass.services.async_call("hisho", "read_aloud", {"message": "In the den.", "more": True}, blocking=True)
+    await asyncio.sleep(0.05)
+    assert spoken[-1] == "media_player.den_mini"
+    hass.states.async_set("sensor.phone_area", "Kitchen")      # mid-reply: the reply stays where it started
+    await hass.services.async_call("hisho", "read_aloud", {"message": "Still the same reply."}, blocking=True)
+    hass.states.async_set("media_player.den_mini", "idle")
+    await asyncio.sleep(0.1)
+    assert spoken[-1] == "media_player.den_mini"
+
+    # two room speakers in the same room: both play it, together
+    entities.async_get_or_create("media_player", "test", "kitchen-dante", suggested_object_id="kitchen_dante")
+    entities.async_update_entity("media_player.kitchen_dante", area_id=kitchen.id)
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    await hass.config_entries.options.async_configure(result["flow_id"], {
+        "show_network": False, "read_aloud": True, "read_aloud_speaker": ["media_player.office"],
+        "read_aloud_follow": "sensor.phone_area",
+        "read_aloud_room_speakers": ["media_player.kitchen_mini", "media_player.kitchen_dante"]})
+    await hass.async_block_till_done()
+    hass.states.async_set("sensor.phone_area", "Kitchen")
+    hass.states.async_set("media_player.den_mini", "idle")
+    heard: list[str] = []
+    hass.bus.async_listen(services.READ_ALOUD_EVENT, lambda event: heard.append(event.data["speaker"]))
+    hass.states.async_set("media_player.kitchen_dante", "playing")
+    await hass.services.async_call("hisho", "read_aloud", {"message": "Both of you."}, blocking=True)
+    await asyncio.sleep(0.05)
+    assert spoken[-1] == "media_player.kitchen_mini,media_player.kitchen_dante"
+    assert heard == ["media_player.kitchen_mini", "media_player.kitchen_dante"]   # each speaker's screen
+
+
+async def test_read_aloud_plays_on_several_chosen_speakers_together(
+    hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Several read aloud speakers (no follow me): each reply plays on all of them at once."""
+    await setup_entry(hass, config_entry)
+    monkeypatch.setattr(services, "READ_ALOUD_POLL", 0.01)
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    await hass.config_entries.options.async_configure(result["flow_id"], {
+        "show_network": False, "read_aloud": True,
+        "read_aloud_speaker": ["media_player.office_satellite", "media_player.office_dante"]})
+    await hass.async_block_till_done()
+    spoken: list[Any] = []
+
+    async def speak(call: Any) -> None:
+        spoken.append(call.data["media_player_entity_id"])
+        hass.states.async_set("media_player.office_dante", "playing")
+
+    hass.services.async_register("tts", "speak", speak)
+    answer = await hass.services.async_call("hisho", "read_aloud", {"message": "Both."}, blocking=True,
+                                            return_response=True)
+    await asyncio.sleep(0.05)
+    assert spoken == [["media_player.office_satellite", "media_player.office_dante"]]
+    assert answer["speaker"] == "media_player.office_satellite,media_player.office_dante"
+    hass.states.async_set("media_player.office_dante", "idle")
 
 
 async def test_read_aloud_times_each_message_by_its_measured_speech(
@@ -852,7 +924,7 @@ async def test_read_aloud_times_each_message_by_its_measured_speech(
     monkeypatch.setattr(services, "_prepare", prepare)
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
     await hass.config_entries.options.async_configure(
-        result["flow_id"], {"show_network": False, "read_aloud": True, "read_aloud_speaker": "media_player.office"})
+        result["flow_id"], {"show_network": False, "read_aloud": True, "read_aloud_speaker": ["media_player.office"]})
     await hass.async_block_till_done()
     played: list[float] = []   # seconds of speech in each clip
 
@@ -922,7 +994,7 @@ async def test_read_aloud_tells_speaker_screens_what_is_sounding(
     monkeypatch.setattr(services, "_prepare", prepare)
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
     await hass.config_entries.options.async_configure(
-        result["flow_id"], {"show_network": False, "read_aloud": True, "read_aloud_speaker": "media_player.office"})
+        result["flow_id"], {"show_network": False, "read_aloud": True, "read_aloud_speaker": ["media_player.office"]})
     await hass.async_block_till_done()
     hass.services.async_register("media_player", "play_media", lambda call: None)
     seen: list[dict[str, Any]] = []
