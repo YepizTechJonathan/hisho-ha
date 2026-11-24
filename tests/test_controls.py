@@ -903,6 +903,22 @@ async def test_read_aloud_plays_on_several_chosen_speakers_together(
     hass.states.async_set("media_player.office_dante", "idle")
 
 
+async def test_read_aloud_follow_me_can_be_turned_off_again(
+    hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry
+) -> None:
+    """Clearing the follow sensor in the options turns follow me off (it isn't put back as a default)."""
+    await setup_entry(hass, config_entry)
+    base = {"show_network": False, "read_aloud": True, "read_aloud_speaker": ["media_player.office"]}
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    await hass.config_entries.options.async_configure(result["flow_id"], {**base, "read_aloud_follow": "sensor.phone_area"})
+    await hass.async_block_till_done()
+    assert config_entry.options["read_aloud_follow"] == "sensor.phone_area"
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    await hass.config_entries.options.async_configure(result["flow_id"], base)
+    await hass.async_block_till_done()
+    assert "read_aloud_follow" not in config_entry.options
+
+
 async def test_read_aloud_times_each_message_by_its_measured_speech(
     hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry, monkeypatch: pytest.MonkeyPatch
 ) -> None:

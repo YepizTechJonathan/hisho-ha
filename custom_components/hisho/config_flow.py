@@ -326,8 +326,10 @@ class HishoOptionsFlow(OptionsFlowWithReload):
                     vol.Required(
                         CONF_READ_ALOUD_VOICE, default=options.get(CONF_READ_ALOUD_VOICE, DEFAULT_READ_ALOUD_VOICE)
                     ): EntitySelector(EntitySelectorConfig(domain="tts")),
+                    # suggested, not default: a default comes back when the field is cleared, so it could
+                    # never be turned off again
                     vol.Optional(
-                        CONF_READ_ALOUD_FOLLOW, **({"default": follow} if follow else {})
+                        CONF_READ_ALOUD_FOLLOW, description={"suggested_value": follow}
                     ): EntitySelector(EntitySelectorConfig(domain="sensor")),
                     vol.Optional(
                         CONF_READ_ALOUD_ROOM_SPEAKERS, default=options.get(CONF_READ_ALOUD_ROOM_SPEAKERS, [])
