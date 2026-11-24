@@ -31,6 +31,12 @@ read_aloud:
     await_start:
       selector:
         text:
+    thread:
+      selector:
+        text:
+    color:
+      selector:
+        text:
 run_action:
   fields:
     config_entry_id:

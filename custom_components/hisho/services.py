@@ -133,6 +133,9 @@ READ_ALOUD_SCHEMA = vol.Schema(
         # more: more of the same reply follows (a reader sending it sentence by sentence), so its start waits
         # a little to play with the rest in one clip.
         vol.Optional("more", default=False): cv.boolean,
+        # thread / color: where the reply came from (the reader's name and colour band), shown on speaker screens
+        vol.Optional("thread"): cv.string,
+        vol.Optional("color"): cv.string,
     }
 )
 
@@ -287,6 +290,17 @@ class _Waiting(asyncio.Queue):
         return self._queue[0]
 
 
+READ_ALOUD_EVENT = f"{DOMAIN}_read_aloud"   # fired as each message starts sounding: speaker screens show it
+
+
+def _sounding(hass: HomeAssistant, speaker: str, queue: _Waiting, message: str, seconds: float,
+              info: dict[str, Any]) -> None:
+    """Tell whoever listens (a speaker's screen) which message is sounding now, for how long, and what follows."""
+    following = None if queue.empty() else queue.peek()[1]
+    hass.bus.async_fire(READ_ALOUD_EVENT, {"speaker": speaker, "text": message, "seconds": round(seconds, 2),
+                                           "next": following, "waiting": queue.qsize(), **info})
+
+
 async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: _Waiting) -> None:
     """Speak what is queued for one speaker, each message after the one before has finished. Messages whose
     speech is already made when one starts are joined on to it and played as one clip."""
@@ -295,7 +309,7 @@ async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: _Waiting)
     mid_reply = False   # the last clip ended inside a reply (more of it was coming)
     while True:
         batch = [await queue.get()]
-        voice, message, context, _more, spoken, begins, ready = batch[0]
+        voice, message, context, _more, info, spoken, begins, ready = batch[0]
         cut.clear()
         try:
             try:
@@ -337,7 +351,9 @@ async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: _Waiting)
                     await asyncio.wait_for(cut.wait(), READ_ALOUD_LEAD)
                 except TimeoutError:
                     pass
-                for (*_, spoken_, begins_, _ready), each in zip(batch, speech, strict=True):
+                for item, each in zip(batch, speech, strict=True):
+                    *_, spoken_, begins_, _ready = item
+                    _sounding(hass, speaker, queue, item[1], each.seconds, item[4])
                     if not begins_.done():
                         begins_.set_result(None)
                     try:   # as long as its speech lasts, unless a stop cuts it
@@ -364,6 +380,8 @@ async def _read_aloud_worker(hass: HomeAssistant, speaker: str, queue: _Waiting)
             while loop.time() < deadline and not cut.is_set():
                 state = hass.states.get(speaker)
                 if state is not None and state.state in ("playing", "buffering"):
+                    if not started:
+                        _sounding(hass, speaker, queue, message, len(message) / READ_ALOUD_PACE, info)
                     started = True
                     if not begins.done():
                         begins.set_result(None)
@@ -527,7 +545,8 @@ def async_setup_services(hass: HomeAssistant) -> None:
         making: dict[str, asyncio.Task] = hass.data.setdefault(READ_ALOUD_MAKING, {})
         ready = making[speaker] = hass.async_create_task(
             _prepare_after(hass, making.get(speaker), voice, message), "hisho read aloud prepare")
-        queue.put_nowait((voice, message, call.context, call.data["more"], spoken, begins, ready))
+        info = {k: call.data[k] for k in ("thread", "color") if call.data.get(k)}
+        queue.put_nowait((voice, message, call.context, call.data["more"], info, spoken, begins, ready))
         waiting = queue.qsize()
         if call.data["wait"]:
             await spoken

@@ -677,6 +677,14 @@
         "await_start": {
           "name": "Wait for start",
           "description": "Answer once the message with this id starts playing (or is over)."
+        },
+        "thread": {
+          "name": "Thread",
+          "description": "Where the reply came from, shown on a speaker's screen while it is read."
+        },
+        "color": {
+          "name": "Colour",
+          "description": "The thread's colour (e.g. #a78bfa), the band on a speaker's screen."
         }
       }
     }

@@ -907,6 +907,36 @@ async def test_read_aloud_times_each_message_by_its_measured_speech(
     assert played == [0.15, 0.3, 0.3, 0.3]
 
 
+async def test_read_aloud_tells_speaker_screens_what_is_sounding(
+    hass: HomeAssistant, hisho: AiohttpClientMocker, config_entry: MockConfigEntry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each message fires hisho_read_aloud as it starts sounding (inside a joined clip too), with its length, what
+    follows and the thread it came from, so a speaker's screen can show it."""
+    await setup_entry(hass, config_entry)
+    for name in ("READ_ALOUD_TAIL", "READ_ALOUD_LEAD", "READ_ALOUD_HOLD"):
+        monkeypatch.setattr(services, name, 0.0)
+
+    async def prepare(hass_: HomeAssistant, voice: str, message: str) -> services._Speech:
+        return services._Speech(b"\0\0" * int(24000 * 0.1), 24000, 2, 1)   # 0.1 s
+
+    monkeypatch.setattr(services, "_prepare", prepare)
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    await hass.config_entries.options.async_configure(
+        result["flow_id"], {"show_network": False, "read_aloud": True, "read_aloud_speaker": "media_player.office"})
+    await hass.async_block_till_done()
+    hass.services.async_register("media_player", "play_media", lambda call: None)
+    seen: list[dict[str, Any]] = []
+    hass.bus.async_listen(services.READ_ALOUD_EVENT, lambda event: seen.append(dict(event.data)))
+    for text in ("One.", "Two."):
+        await hass.services.async_call("hisho", "read_aloud",
+                                       {"message": text, "thread": "Build speakers", "color": "#a78bfa"}, blocking=True)
+    await asyncio.sleep(0.4)
+    await hass.async_block_till_done()
+    assert [e["text"] for e in seen] == ["One.", "Two."]
+    assert seen[0] == {**seen[0], "speaker": "media_player.office", "seconds": 0.1, "thread": "Build speakers",
+                       "color": "#a78bfa"}
+
+
 async def test_read_aloud_clips_are_served_to_the_speaker(hass: HomeAssistant, hass_client_no_auth: Any) -> None:
     """The speaker fetches a joined clip from Home Assistant without logging in; an unknown name is not found."""
     assert await async_setup_component(hass, "http", {})
